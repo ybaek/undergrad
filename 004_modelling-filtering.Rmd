@@ -1,0 +1,277 @@
+---
+title: "Notebook: Applying spatial and temporal filtering techniques."
+date: "Jul 10th, 2018"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = FALSE, collapse = TRUE)
+```
+
+This is a notebook for exploring and implementing spatial/temporal filtering techniques introduced by such papers as Griffith (2013) and Hughes and Haran (2013). While `ngspatial` contains a proper full-fledged model framework introduced in Hughes and Haran (2013) and Hughes (2018), that code work will be separated as a raw code since it demands computational expense.
+
+Some exploratory visualization work on the county-level areal dataset containing mortality rates is also done.
+
+```{r pkgs}
+library(tidyverse)
+library(readxl)
+library(spacetime)
+library(sp)
+library(gstat)
+library(maps)
+library(maptools)
+library(RColorBrewer)
+library(ngspatial) # Includes filtering methods from Hughes
+```
+
+# Data
+County-level datasets on Massachusetts state data, available from USDA ERS website (https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/). They consist of:
+
+* Education: 10-year intervals from 1970 to 2000, and the 5-year average of 2012-2016.
+* Population data: Available from 2010 to 2017.
+* Unemployment: Available from 2007 to 2017.
+
+```{r dataset}
+source("000_utils.R")
+edu_tbl <- read_excel("data/Education.xls", skip=4)
+population_tbl <- read_excel("data/PopulationEstimates.xls", sheet=1, skip=2)
+unemp_tbl <- read_excel("data/Unemployment.xls", sheet=1, skip=6)
+```
+
+Here we focus on mortality rate as a response of interest. Time window is 2011-2017; area is here restricted to counties in Massachusetts for visual purposes.
+
+```{r wrangling}
+populationMA_tbl <- population_tbl %>% 
+  filter(State=="MA", Area_Name!="Massachusetts")
+deathsMA_tbl <- populationMA_tbl %>% 
+  select(Area_Name, starts_with('R_death')) %>% 
+  gather(key="Year", value="Deaths", -Area_Name)
+deathsMA_tbl$Year <- deathsMA_tbl$Year %>% 
+  strsplit("_") %>% 
+  sapply(function(x) x[3]) %>% as.integer()
+```
+
+
+```{r mortality_visuals}
+# Creating a map
+mapctyMA <- maps::map('county', 'massachusetts', plot=F, fill=T)
+c_ID_str <- mapctyMA$names %>% 
+  strsplit(",") %>% 
+  sapply(function(x) x[2]) ## County names as strings
+countyPolyMA <- map2SpatialPolygons(
+  mapctyMA, IDs=c_ID_str, proj4string=CRS(g_latlongProj_str)
+)
+c_timeGrid <- 2011:2017 %>% paste0("-01-01") %>% as.POSIXct(tz="UTC")
+deathsMAData_stdf <- STFDF(countyPolyMA, c_timeGrid, deathsMA_tbl["Deaths"])
+savePlot_fn("004.05_death-rate-MA-10-to-17.png", stplot,
+            obj=deathsMAData_stdf, names.attr=2011:2017, main="Mortality rates in Mass. counties",
+            col.regions=brewer.pal(9, 'YlOrRd'), cuts=9)
+```
+
+![](other_images/004.05_death-rate-MA-10-to-17.png)
+
+A time trend across years in different counties can be useful visualization to distinguish similar patterns and fit a simple model to separate a mean trend across locations.
+
+```{r EDA_WIP}
+## Plotting
+deathsTrendMA_g <- ggplot(data=deathsMA_tbl, aes(Year, Deaths)) +
+  geom_line(aes(colour=Area_Name)) +
+  scale_x_continuous(breaks=seq(2010, 2017, by=2)) +
+  theme_bw()
+deathsTrendMA_g
+#ggsave("004.06_death-rate-time-trends.png", deathsTrendMA_g, width=100, height=70, units="cm", device=png)
+```
+
+# Examining eigenvectors of time adjacency matrix (Griffith, 2010)
+
+A neat visual explanation of the interpretability of filtering eigenvectors (with orthogonal restriction to the covariates) is given in Hughes and Haran, 2013. How, then, do we interpret and regress against the eigenvectors as obtained in a time series? Here we restrict our focus to mortality rates in Berkshire county (one spatial location across time). Since Griffith's model operates in a regular, fixed-effects regression setting, we need to separate possible trend element as a polynomial of time.
+
+```{r time_adj}
+c_adjT <- binAdjTime_fn(7)
+c_X <- deathsMA_tbl %>% 
+  filter(Area_Name=='Berkshire County') %>% 
+  select(Year) %>% 
+  as.matrix()
+deathsBerkshirebasis <- moranEigen_fn(c_X, c_adjT) %>% 
+  getElement("vectors") %>% 
+  cbind(Year=2011:2017, .) %>% 
+  as.data.frame()
+ggplot(data=deathsBerkshirebasis, aes(Year, V2)) + 
+  geom_line()
+```
+
+Can Griffith's version adequately capture long-lagged seasonal dependence structures? That is a question of acute interest.
+
+Let us simualte 100 time series of varying shapes, which all have annual seasonlity (lag of 12) in its autoregressive component and random effects. For reference, an SARIMA model fitting that tries to account for period-12 seasonality is compared.
+
+In the comparison, two important factors matter:
+
+* How good is the fit? (We use BIC as the comparison criterion).
+* How whitened is the residual process? (Perform Ljung-Box test).
+
+```{r seasonal_sim, eval=F}
+## simulating ARIMA model with annual seasonality
+## Comparing model performancea across multiple simulations
+## 1. How's the AIC value? 2. Is the residual series whitened enough??
+seriesMat <- matrix(NA, 100, 100)
+performanceMat <- matrix(NA, 100, 4)
+c_adjT <- binAdjTime_fn(100)
+c_X <- as.matrix(1:100)
+
+# 100 simulations, 100-length time series
+set.seed(1234)
+for (i in 1:100) {
+  annual_sim <- arima.sim(n=100, list(
+  order=c(12, 0, 12), ar=c(0.2, rep(0, 10), -0.5), ma=c(0.1, rep(0, 10), -0.2)),
+  rand.gen=function(n,...) sqrt(0.2)*rt(n, 4)
+  )
+  seriesMat[i,] <- annual_sim # preserve the series for future reference
+  simEigens <- moranEigen_fn(c_X, A=c_adjT) %>% 
+    getElement("vectors") %>% 
+    cbind(y = annual_sim, .) %>% 
+    as.data.frame()
+  X <- cbind(time=c_X, simEigens[1:90]) %>% 
+    as.data.frame()
+  simFiltermodel <- lm(y~., data=X)
+  simFiltermodel <- step(simFiltermodel, direction="backward", k=log(100),
+                         trace=0)
+  simSarimaFit <- arima(annual_sim, order=c(1,0,0),
+                        seasonal=list(order=c(1,0,1), period=12))
+  ## input into performance comparison matrix
+  performanceMat[i,1:4] <- 
+    c(
+      AIC(simFiltermodel), AIC(simSarimaFit),
+      Box.test(simFiltermodel$residuals, type="Ljung-Box")$p.value, 
+      Box.test(simSarimaFit$residuals, type="Ljung-Box")$p.value
+    )
+}
+
+# Time series plot and boxplots using two df's
+AIC_df <- performanceMat[,1:2] %>% 
+  as.data.frame() %>% 
+  rename(Filter = V1, Sarima = V2) %>% 
+  gather(key="Model", value="AIC") %>% 
+  mutate(Model=as.factor(Model))
+pVal_df <- performanceMat[,3:4] %>% 
+  as.data.frame() %>% 
+  rename(Filter = V1, Sarima = V2) %>% 
+  gather(key="Model", value="p_Value")
+
+compareAIC_g <- ggplot(data=AIC_df, aes(Model, AIC)) +
+  geom_boxplot(fill=c("pink", "green")) +
+  theme_bw()
+compareP_g <- ggplot(data=pVal_df, aes(Model, p_Value)) + 
+  geom_boxplot(fill=c("pink", "green")) +
+  theme_bw()
+compareAIC_g
+compareP_g
+```
+
+![](reports/004.06_time-model-comparison-BIC.pdf) 
+ 
+![](reports/004.07_time-model-comparison-pValue.pdf) 
+
+Given that Griffith's proposed adjacency matrix does not allocate weights to each point based on the inherent properties of the time series, it is not surprising that the eigenfilter methodology performs poorly than a regular SARIMA fit, both in terms of model AIC and the residual goodness-of-fit test. In particular, almost all residual processes of eigenfilter model fit failed to pass the Ljung-Box test, which casts much doubt on the efficacy of the model methodology.
+
+Thus, a concern regarding a more adequate structure of the adjacency matrix $\mathbf{A}_T$ that accounts for possibly complex seasonal dependence structure of a series arises.
+
+# Simulating spatiotemporal data
+In the below simulation model, for example, the response is a linear combination of spatial coordinates $\mathbf{x}$ and $\mathbf{y}$. It has AR(1) dependence and a contemporaneous spatial dependence structure. 
+
+Some of the basic assumptions:
+
+i) Spatial isotropy and stationarity.
+ii) Temporal stationarity. 
+iii) Interaction between space and time.
+
+The time series is assumed to be causal; $Z_1$ is simply determined as the spatial mean plus gaussian error term. $\mathbf{s}$, which determines the interaction, is a complex, microscale spatial effect term that follows a Gaussian distribution with relatively small variance.
+
+$$
+Z_t = (1 + 1.5\mathbf{x} + \mathbf{y} + t\mathbf{s}) + 0.1Z_{t-1} + \epsilon_t,\; \mathbf{s}\sim N(0, 0.5I),\; \epsilon_t\sim N(0, I),\; t>1.
+$$
+
+Model simulation for $n=100$ areal units for $T=10$ discrete time periods. Total number of simulated responses are $100\times 10$ that follow a known gaussian distribution.
+
+```{r simulation}
+set.seed(1000)
+# time / spatial coordinates
+x <- seq(-1, 1, length.out=10)
+y <- seq(-1, 1, length.out=10)
+t <- 1:10
+# factors and weights
+X <- rep(1,10) %o% x
+Y <- y %o% rep(1,10)
+spatialMeans <- matrix(NA, 10, 10)
+for (i in 1:10) {
+  for (j in 1:10) {
+    spatialMeans[,i] <- 1 + 1.5*X[i,] + Y[i,]
+  }
+}
+spatialMeans <- as.vector(spatialMeans)
+
+# state process / response simulated
+Zmat <- matrix(NA, 100, 10)
+for (time in 1:10) {
+  # initial period is relatively simple
+  if (time==1) Zmat[,time] <- spatialMeans + rnorm(100, 0, sqrt(0.5)) +
+      rnorm(100) # gaussian error
+  else {
+    # model for t > 1
+    Zmat[,time] <- spatialMeans + time*rnorm(100, 0, sqrt(0.5)) +
+      0.1*Zmat[,(time-1)] + rnorm(100)
+  }
+}
+```
+
+Different spatial heatmaps resulting from the simulation are plotted below. These are snapshots of responses at time periods $t=1,5,10$.
+
+```{r plot_heatmap}
+# Sptial map for each time period
+spatialMapPerT_fn <- function(x, y, response, t, ...) {
+  # quick plot function for spatial map at time t
+  # ... passed to cutomize plot labels
+  ggplot(data=data.frame(x=x, y=y, z=response[,t]), mapping=aes(x, y, fill=z)) +
+    geom_raster() + 
+    labs(...) + 
+    theme_minimal()
+}
+
+# Plotting
+X <- X %>% t() %>% as.vector()
+Y <- Y %>% t() %>% as.vector()
+simulPlot1_g <- spatialMapPerT_fn(X, Y, Zmat, 1, title = "Simulation: t=1")
+simulPlot1_g
+simulPlot5_g <- spatialMapPerT_fn(X, Y, Zmat, 5, title = "Simulation: t=5")
+simulPlot5_g
+simulPlot10_g <- spatialMapPerT_fn(X, Y, Zmat, 10, title = "Simulation: t=10")
+simulPlot10_g
+```
+
+Pattern-wise, we may be able to specify functional response curves from neighboring locations as being "closer" to each other. Interesting question may involve: **clustering**.
+
+```{r plot_ts}
+ZmatTimeRun_df <- Zmat %>% t() %>% as.data.frame() %>% 
+  cbind(t=1:10)
+# generic run-sequence plot function
+c_tsPlot_fn <- function(data, x, y, colour) {
+  geom_line(data=data, aes_string(x, y, colour=colour))
+}
+# Plotting: one functional curve per location
+c_plotList <- list()
+for (i in 1:100) {
+  c_plotList[[i]] <- c_tsPlot_fn(ZmatTimeRun_df, "t", paste0("V", i), i)
+}
+tsPlotPerLoc_g <- c_plotList %>% 
+  purrr::reduce(.init = ggplot(), `+`) +
+  labs(x="t", y="Response", colour="Location") +
+  theme_bw()
+tsPlotPerLoc_g
+```
+
+
+
+
+
+

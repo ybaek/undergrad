@@ -1,0 +1,213 @@
+\documentclass[12pt]{article}
+ \usepackage[margin=1in]{geometry} 
+\usepackage{amsmath,amsthm,amssymb,amsfonts,mathtools}
+ 
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\R}{\mathbb{R}}
+% 2x1 vector macro
+\newcommand{\myvec}[2]{
+\left[\begin{array}{c}
+#1 \\ #2
+\end{array}\right]
+}
+% 2x2 matrix macro
+\newcommand{\mymat}[4]{
+\left[\begin{array}{cc}
+#1 & #2 \\ #3 & #4
+\end{array}\right]
+}
+
+\newenvironment{theorem}[2][Proposition]
+%% Here instead of Theorem, a Proposition.
+{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]
+}
+{\end{trivlist}}
+ 
+\begin{document}
+ 
+\title{Techincal Results.}
+\author{Youngsoo Baek.}
+\date{Jul 26th, 2018.}
+\maketitle
+
+This is a file to collate theoretical/technical results that arise on the way.
+
+\section*{Heuristic support for not using binary adjacency matrix in Griffith (2013)}
+In his paper (2013), Griffith proposes employing similar scheme as Moran's basis expansion in a $T$-point time series setting. The equivalent of spatial adjacency matrix $\mathbf{A}$ specified in this case is derived from the well-known Durbin-Watson statistic. That is, the $T\times T$ matrix $\mathbf{C}_T$ is specified as follows:
+
+$$
+\mathbf{C}_T = \left[
+\begin{array}{ccccccc}
+1 & -1 & 0 & \dots & \dots & \dots & 0\\
+-1 & 2 & -1 & 0 & \dots & \dots & 0\\
+0 & -1 & 2 & -1 & 0 & \dots & 0\\
+\vdots & & & \ddots & \ddots & \ddots & 0\\
+0 & \dots & \dots & \dots & -1 & 2 & -1\\
+0 & \dots & \dots & \dots & \dots & -1 & 1\\
+\end{array}
+\right].
+$$
+
+In this way, $\mathbf{x}'(\mathbf{I}-n^{-1}\mathbf{1}\mathbf{1}')'\mathbf{C}_T(\mathbf{I}-n^{-1}\mathbf{1}\mathbf{1}')\mathbf{x}$ yields the Durbin-Watson statistic, where $\mathbf{x}=(x_1,\ldots,x_t)'$ is the column vector containing observations at time $t$.
+
+Now, Griffith recites Basilevsky (1983) to state that $\mathbf{C}_T$ has analytically known eigenvectors: that is, the $j$-th eigenvector for $\mathbf{C}_T$ is given by
+$$\mathbf{e}_j = \frac{1}{\sqrt{T+1}} (\sin\frac{1}{T+1}j\pi, \ldots, \sin\frac{T}{T+1}j\pi)'.$$
+
+Then, he says the following: 
+\begin{quote}
+"The number of positive and of negative eigenvalues equals ($T-1$)/2 if $T$ is odd; when $T$ is even, the number of positive eigenvalues is ($T-2$)/2 and the number of negative eigenvalues is ($T-1$)/2." 
+\end{quote}
+
+I am yet uncertain whether this remark has foundings in Basilevsky (1983). This is confusing to me, since {\bf $\mathbf{C}_T$ should only have nonnegative eigenvalues, and, furthermore, the Moran basis expansion matrix also should only have nonnegative eigenvalues}. I outline a sketch of the relatively straightforward proof below.
+
+\begin{theorem}{1}
+$\mathbf{C}_T$ is positive semidefinite.
+\end{theorem}
+
+\begin{proof}
+Let a $T$-by-$T$ matrix $\mathbf{C}_T$ be defined as in Griffith (2013). It can be readily shown that this matrix is a Laplacian matrix of a linear, undirected simple graph $G=(V,E)$, where the set of $T$ vertices consists of each time period $t=1,\ldots, T$. The binary adjacency matrix $\mathbf{A}$ of this graph can be specified as follows:
+$$
+\mathbf{A} = \left[
+\begin{array}{ccccccc}
+0 & 1 & 0 & \dots & \dots & \dots & 0\\
+1 & 0 & 1 & 0 & \dots & \dots & 0\\
+0 & 1 & 0 & 1 & 0 & \dots & 0\\
+\vdots & & & \ddots & \ddots & \ddots & 0\\
+0 & \dots & \dots & \dots & 1 & 0 & 1\\
+0 & \dots & \dots & \dots & \dots & 1 & 0\\
+\end{array}
+\right].
+$$
+Since $\mathbf{C}_T$ is a Laplacian matrix, it is also positively semidefinite. 
+
+As a corollary, this implies that {\bf all eigenvalues of $\mathbf{C}_T$ are nonegative}.
+\end{proof}
+
+We now proceed to show that the Moran's basis expansion on $\mathbf{C}_T$ also yields only nonnegative eigenvalues.
+
+\begin{theorem}{2}
+Let $\mathbf{X}$ be a full-rank, $T\times p$ real matrix of covariates, collected over $T$ discrete periods. Let $\mathbf{P}_x$ be the projection matrix of $\mathbf{X}$. Then, a $T$-by-$T$ matrix defined by:
+$$\mathbf{M} \equiv (\mathbf{I}-\mathbf{P}_x)'\mathbf{C}_T(\mathbf{I}-\mathbf{P}_x),$$
+is also positively semidefinite.
+\end{theorem}
+
+\begin{proof}
+It is trivial to show that $\mathbf{M}$ is a real symmetric matrix. Since it is a Hermitian matrix, and it is known that both $\mathbf{I}-\mathbf{P}_x$ and $\mathbf{C}_T$ are positively semidefinite, we can apply the well-known results and conclude that $\mathbf{M}$ is positively semidefinite.
+\end{proof}
+
+R simulations seem to support the above statements; in particular, Griffith's own example of Puerto Rico, which consists of 168 time points, yielded only positive eigenvalues through eigendecomposition functions in R.
+
+If my above results are true, this provides some theoretical support as to why Griffith's recommended $\mathbf{C}_T$ is not appropriate in the broader context of spatiotemporal modelling. In his paper, the spatiotemporal adjacency structure is specified as a Kronecker product of terms involving $\mathbf{C}_T$ and the areal adjacency matrix $\mathbf{A}$. However, given the usually high dimensions there is a need to choose proper number of eigenvectors $r$ to include in the model. Hughes and Haran (2013) suggested a reasonable criterion of selecting eigenvectors corresponding to positive eigenvalues, since it is usually expeected that neighboring areas (both in sense of time and space) should behave alike. Griffith's version of $\mathbf{C}_T$, however, is ill-suited for this purpose in time context, since all eigenvalues are positive. Though it is uncertain how it affects the spatiotemporal modelling, there does not seem to be a good rationale for preferring it over other forms of adjacency matrices that account for inherent seasonal structures of the time series.
+
+\section*{Extending the latent spatial state model in MSTM suggested by Bradley et al. (2016) to order $p$.}
+
+Bradley et al. (2016) provides a detailed specification of the Multivariate Spatio-Temporal Model (MSTM) for gaussian process. Here, the process model for $\mathbf{y}_t$ can be thought of in a state-space model framework as follows:
+
+$$\text{Output model:}\quad \mathbf{y}_t = \mathbf{X}_t\beta_t + \mathbf{S}_{X,t}\eta_t + \xi_t.$$
+$$\text{State model:}\quad \eta_t = \mathbf{M}_{B,t}\eta_{t-1} + \mathbf{u}_t.$$
+
+Here, according to their model notation, $\eta_t$ is the spatial random effects vector of length $r<<n_t$, where $n_t$ is the number of spatial locations where process is observed at time $t$. The state model representation is possible in this form since $\eta_t$ is modeled by a VAR(1) time series model with propagator matrix $\mathbf{M}_{B,t}$. The authors assure that $\eta_{t-1}$ and $\mathbf{u}_t$ for $t=2,\ldots,T$ are uncorrelated by the construction of the propagator matrix, which capitalizes on desirable orthogonality properties of a Moran's basis expansion.
+
+Some of the economic variables in the QWI data they studied in the paper have more complex seasonal/temporal dependence structure than that of AR order 1, which motivates the need to extend the model for $\eta_t$ into VAR model of order $p>1$. Specifically, suppose $p=2$. Using the same notation, we now need to specify two propagator matrices:
+
+$$\textrm{VAR(2) specification:}\quad \eta_t = \mathbf{M}_{t}\eta_{t-1} + \mathbf{N}_{t}\eta_{t-2} + \mathbf{u}_t.$$
+
+It is no longer straightforward to construct $t$-variant $\mathbf{M}$ and $\mathbf{N}$ as the authors proposed in the paper; as for one example, we can now allow the two propagator matrices to be {\it both orthogonally restricted to $C(\mathbf{B}_t)$, but not necessarily to each other}. This intuitively is understandable since given the dependence across far-reaching temporal lags for $\eta_t$, the variability explained by each of those components will be reasonably collinear with each other.
+
+\subsection*{State representation of VAR($p$) model.}
+Suppose we have properly specified $M_t$ and $N_t$. One of the desirable properties of these propagator matrices is that their residing in the orthogonal subspace of $C(\mathbf{B}_t)$. This really means that their construction is $\mathbf{X}_t$-dependent. 
+
+Now, the VAR(2) model for $\eta_t$ can be represented in a state-space model form (Brockwell and Davis, 2016) as follows:
+
+$$\myvec{\eta_t}{\eta_{t-1}} =  \mymat{\mathbf{M}_t}{\mathbf{N}_t}{I_r}{O_r}\myvec{\eta_{t-1}}{\eta_{t-2}} + \myvec{\xi_t}{\mathbf{0}},\; t=T-1,\ldots, 1,$$
+where $I_r$ is an $r\times r$ identity matrix, and $O_r$ is an $r\times r$ matrix of zeros.
+
+Redefining the notation:
+$$H_t \equiv \Phi_t H_{t-1} + \Xi_t,\; t=T-1,\ldots, 1.$$
+
+In this state-model representation, we can now apply the well-known Kalman smoother techniques in the MCMC scheme when fitting the model. Forward filtering-backward sampling is a MCMC technique that can be used to sample $H_t$ in the Gibbs sampler (Carter and Kohn, 1994). Details about the FFBS scheme specific to this model are also given in Bradley et al. (2016).
+
+To apply the Kalman smoother, we need knowledge about the covriance structures of $H_t$. In particular, denote Var($H_t$) by $\Sigma_t$, and Cov($H_t,H_{t-1}$) by $\Gamma(t,t-1)$. These matrices have a block structure relating to the covariance matrices of $\eta_t$:
+
+$$\Sigma_t = \mymat{Var(\eta_t)}{Cov(\eta_t,\eta_{t-1})}{Cov(\eta_{t},\eta_{t-1})}{Var(\eta_{t-1})},$$
+$$\Gamma(t,t-1) = \mymat{Cov(\eta_t,\eta_{t-1})}{Cov(\eta_t,\eta_{t-2})}{Var(\eta_{t-1})}{Cov(\eta_{t-1},\eta_{t-2})}.$$
+
+Since $\eta_t\sim Gaussian(\mathbf{0}, \mathbf{P}_t)$, assuming $\eta_1$ and $\eta_2$ are uncorrelated, we have the following relations:
+
+$$Cov(\eta_t,\eta_{t-1}) = \mathbf{M}_t\mathbf{P}_t + \mathbf{N}_t Cov(\eta_{t-1},\eta_{t-2}),\; Cov(\eta_3,\eta_2)=\mathbf{M}_3\mathbf{P}_2,$$
+$$Cov(\eta_t,\eta_{t-1}) = \mathbf{M}_t Cov(\eta_{t-1},\eta_{t-2}) + \mathbf{N}_t\mathbf{P}_{t-2},\; Cov(\eta_3,\eta_1)=\mathbf{N}_3\mathbf{P}_1.$$
+
+If $t=1$; that is, if $\mathbf{X}$ is invariant over time, the above relations can be simplified since the propagator matrices $\mathbf{M}$ and $\mathbf{N}$ are also invariant over time. This can be the case when the exogenous variables included in the model are simply an intercept term or dummy variables for intervention control. We can furthermore then define $\mathbf{P}$ as also time-invariant: $\mathbf{P}\equiv \sigma^2_K\mathbf{P}^*$, where $\mathbf{P}^*\equiv (\mathbf{S'QS})^{-1}$, as in original model specification.
+
+$$Cov(\eta_t,\eta_{t-1}) = \sum_{i=0}^{t-3} \mathbf{N}^i\mathbf{M}\mathbf{P},$$
+$$Cov(\eta_t,\eta_{t-2}) = \sum_{i=0}^{t-3} \mathbf{M}\mathbf{N}^i\mathbf{M}\mathbf{P} + \mathbf{NP},$$
+where $\mathbf{N}^0\equiv I_r$.
+
+\subsection*{Specifying propagator matrices.}
+In this state-space representation, we can now apply the derivation process of the authors of the MSTM paper for latent spatial process modeled by VAR(2). Again, as the authors acknowledge, this derivation process has no apparent spatial interpretation and purely facilitates the specification of propagator matrices that are often not straightforward from the given data. The set-up assumptions of the modeling, e.g. specifying exogenous variables to be $t$-invariant, or assuring the dimension of the bases $r << n$, will assure that the computations needed in this process are feasible. 
+
+In a state-space representation, we can rewrite the model formula as below:
+
+$$
+\myvec{\mathbf{y}_t}{\mathbf{y}_{t-1}} = 
+\mymat{\mathbf{X}_t}{\mathbf{O}_p}{\mathbf{O}_n}{\mathbf{X}_{t-1}} \myvec{\beta_t}{\beta_{t-1}} +
+\mymat{\mathbf{S}_{X,t}}{\mathbf{O}_r}{\mathbf{O}_n}{\mathbf{S}_{X,t-1}}
+\bigg(\mymat{\mathbf{M}_t}{\mathbf{N}_t}{I_r}{O}
+\myvec{\eta_t}{\eta_{t-1}} + \myvec{\mathbf{u}_t}{\mathbf{0}}
+\bigg) +
+\myvec{\xi_t}{\xi_{t-1}}.
+$$
+
+Assuming $\mathbf{X}$ is scaled, and defining
+$$
+\Phi_t \equiv
+\mymat{\mathbf{M}_t}{\mathbf{N}_t}{I_r}{O}
+$$
+and
+$$
+\Theta_t \equiv 
+\mymat{\mathbf{S}_{X,t}}{\mathbf{O}_r}{\mathbf{O}_n}{\mathbf{S}_{X,t-1}},
+$$
+it can be shown that the following holds true:
+$$
+\Theta_t'\tilde{\mathbf{y}_t} = 
+\left[
+\begin{array}{cc}
+\Theta_t'\tilde{\mathbf{X}_t} & I_{2r}
+\end{array}
+\right]
+\myvec{\tilde{\beta}_t}{\tilde{\mathbf{u}}_t}
++ \Phi_t\tilde{\eta_t},
+$$
+
+where:
+$$
+\begin{aligned}
+\tilde{\mathbf{y}_t} = \myvec{\mathbf{y}_t-\xi_t}{\mathbf{y}_{t-1}-\xi_{t-1}}, & \tilde{\mathbf{X}_t} = \myvec{\mathbf{X}_t}{\mathbf{X}_{t-1}},\\
+\end{aligned}
+$$
+$$
+\begin{aligned}
+\tilde{\mathbf{\beta}_t} = \myvec{\beta_t}{\beta_{t-1}}, & \tilde{\eta_t} = \myvec{\eta_t}{\eta_{t-1}}, & \tilde{\mathbf{u}_t} = \myvec{\mathbf{u}_t}{\mathbf{0}}.
+\end{aligned}
+$$
+
+Thus, the propagator matrix $\Phi_t$ can be now specified in the similar manner as described in Bradly et al., 2016, using the Moran's operator that expands on the adjacency matrix $I_{2r}$ on the orthogonal subspace of the column space of matrix $\mathbf{B}_t \equiv \left[
+\begin{array}{cc}
+\Theta_t'\tilde{\mathbf{X}_t} & I_{2r}
+\end{array}
+\right]
+$.
+
+\section*{Cited Works.}
+\begin{itemize}
+\item Basilevsky, A. (1983). {\it Applied Matrix Algebra in the Statistical Sciences.} North-Holland, New York.
+\item Bradley, J. R., Holan, S. H., and Wikle, C. K. (2015). Multivariate spatio-temporal models for high- dimensional areal data with application to longitudinal employer-household dynamics. {\it The Annals of Applied Statistics}, 9(4):1761-1791.
+\item Brockwell, P. and Davis, R. (2016). {\it Introduction to Time Series and Forecasting.} Springer, New York.
+\item Carter, C. K. and Kohn, R. (1994). On Gibbs Sampling for State Space Models. {\it Biometrika}, 81(3):541-553.
+\item Griffith, D. A. (2012). Space, time, and space-time eigenvector filter specifications that account for autocorrelation. {\it Estadstica Espanola}, 54(177):211-237.
+\end{itemize}
+
+
+\end{document}

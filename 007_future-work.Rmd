@@ -1,0 +1,69 @@
+---
+title: "Notes: For Future Work."
+date: "Aug. 15th, 2018"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+---
+
+Some thoughts for extending the MSTM framework proposed in Bradley et al. (2015).
+
+# General ideas
+
+First, a sum-up of the multivariate dynamic gaussian process model framework.
+
+$$
+Y_t^{(l)}(A) = \mathbf{x}_t^{(l)}(\cdot)'\beta_t + \mathbf{S}_t^{(l)}(A)'\eta_t(A) + \xi_t^{(l)}(A),
+$$
+
+where the variable index $l=1,\ldots,L$, time period $t=1,\ldots,T$, an areal unit of observation: $A\in D_{Obs,t}$.
+
+Assume $\beta_t\sim\text{Gau}(\mu_\beta, \mathbf{B}_t)$ and the gaussian error process $\xi_t\stackrel{iid}{\sim} N(0, \sigma_{\xi,t}^2)$.
+
+## Incorporating temporal evolution
+It was already proposed to incorporate temporal evolution into the spatio-temporal random coefficients $\eta$:
+$$\eta_t = \mathbf{M}_t\eta_{t-1} + \mathbf{v}_t,$$
+where $\eta_t\sim\text{Gau}(\mathbf{0},\mathbf{K}_t)$ and $\mathbf{v}_t\sim\text{Gau}(\mathbf{0}, \mathbf{V}_t)$.
+
+What if the temporal evolution was also incorporated into $\beta$? Then, as the covariates vary across time, so will the regression slope $\beta_t$. This will be particularly relevant when more quantitative exogenous variables are included into modelling:
+$$\beta_t = \beta_{t-1} + \mathbf{u}_t,\;\mathbf{u}_t\sim\text{Gau}(\mathbf{0},\mathbf{W}_t).$$
+
+Few questions arise:
+
+* How should we specify the covariance structure $\mathbf{B}_t$ for regression slope? 
+
+* Is there any identifiability issue between noise terms $\mathbf{u}_t$ and $\mathbf{v}_t$?
+
+
+For the first question, it may be worth looking up papers in econometrics journals.
+
+## Extensions: Distribution/Point-level Data
+One of the most immediate distributional extension of a gaussian process model is that for **count data**. Bradley et al. have also proposed a Poisson MSTM model and develop novel distributional theory that differs from the traditional Poisson-Gaussian link model.
+
+Several issues with count-level data exist, some of which were addressed in the commentaries for Bradley et al. (2018).
+
+* Characterization of overdispersal.
+* Modelling sparse counts (inflated zero values).
+* Embedding lattice onto continuous spatial support (Poisson process).
+
+Also of immediate interest is extending the model to point-level, continuous spatial support. This, in fact, will be worthy of much research work, as the MSTM specification as of now structurally relies on some assumed, fine-scale areal support. 
+
+Few of the issues that arise here:
+
+* Defining basis function $S_t(\cdot)$. Tukey's bisquare estimator seems to be a reasonable choice, though it (and space-filling design) both require a lot more arbitrary decision calls and tuning.
+
+* Choosing distance metric/covariance function for parametrization of the model. 
+
+  - In particular, the covariance function should be flexible enough to spatially model both _nonstationarity_ and _anisotropy_. 
+
+While not of immediate interest, a further extension will avail us modelling on continuous temporal support or gradient level. This can be of interest in certain cases where data are collected over irregular time intervals.
+
+Other concerns for the general model framework:
+
+* Whether the usage of MI propagator matrix proposed for defining $\mathbf{M}_t$ is still sensible.
+
+  - Can the derivation of the propagator matrix "break down" in certain cases? (involves inverting a large-dimensional, not so "well-structured" matrix)
+
+* Good validation metrics in context. Better ways to assess prediction performance of the model than presenting visuals (which was critiqued in the commentary).
+
+

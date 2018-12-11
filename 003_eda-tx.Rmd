@@ -1,0 +1,278 @@
+---
+title: "Notebook: EDA for TX state weather data."
+date: "Jun 27th, 2018"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = FALSE, include=TRUE, collapse = TRUE)
+```
+
+
+# Overview
+This is a R Markdown notebook for exploratory data analysis on a subset of the weather data collected across airports (weather stations) in the United States. The data comes from NCDC NOAA Local Climatological Data (LCD); the codes reproduced here explore a subset of 47 different station locations in Texas state, collected in the years 2015-2017. While most of the observations were made hourly, slight irregularities exist between time intervals, mostly due to different types of forecast bundled together. Here, for simplicity the few disparities across different points in the same hour are averaged. The response variable of interest here is hourly wind speed (in MPH). 
+
+# Packages required
+
+```{r pkgs, echo=T, warning=F, message=F}
+library(tidyverse)
+library(GGally)
+library(lubridate)
+library(reshape2)
+library(sp)
+library(spacetime)
+library(maps)
+library(maptools)
+library(geosphere) #Compute distances on WGS84 ellipsoid (long/lat)
+library(gstat) #Spatial analysis (kriging) tools
+library(mgcv) #GAM fitting
+```
+
+In addition, a number of user-defined functions are used in this report. Their codes can be sourced from a separate file called `000_utils.R`. User-defined functions have suffix `_fn`; global user variables have prefix `g_`. In the same vein, variables that may be of temporary use only or to be repeatedly changed have prefix `c_`.
+
+```{r user_methods}
+source("000_utils.R")
+```
+
+# Loading the data
+Currently, the entire subset of data used here is stored as a binary file storing R data frame object. The data frame is read from a CSV file, which is a merged product of individual CSV files for each weather station provided by NCDC website.
+
+```{r load_data}
+load("TX_data_frame.RData")
+```
+
+# Preprocessing / Preparatory Work
+Some preprocessing to the raw data format is necessary. Important information to be added to the table below includes:
+
+* Hour of the day
+* Day of the year (indexed from 1 to 365/6).
+
+A separate data frame object that stores station-particular information, i.e., WGS84 coordinates, station name, and elevation (in meters), will be also useful for future analysis. Note that, against regular geographic conventions, longitude comes in front of latitude, following the orders of Euler's angle notation.
+
+```{r preprocessing_etc, echo=T}
+TX_df <- TX_df %>% 
+  mutate(HOURLYWindSpeed = as.integer(HOURLYWindSpeed),
+        ## type conversion
+        Hour = lubridate::hour(DATE),
+        ## hour of the day
+        Day = lubridate::yday(DATE))
+        ## day of the year
+
+# Encode station-unique info a data frame
+stationInfo_df <- data.frame(
+  long = unique(TX_df$LONGITUDE), ## Longitudes
+  lat = unique(TX_df$LATITUDE), ## Latitudes
+  name = unique(TX_df$STATION_NAME), ## Station names
+  elevation = unique(TX_df$ELEVATION) ## Elevation in meters
+)
+```
+
+The locations of each 47 different stations are overlayed onto the map of Texas state below.
+
+```{r plot_map_TX}
+# Store the map of TX into object without actual plot output
+mapTX <- maps::map("state", "texas", plot=F, fill=T)
+
+# Convert it into SpatialPolygons class for visualization
+mapTX_sp <- mapTX %>% map2SpatialPolygons(IDs = "texas", 
+                                          proj4string = CRS(g_latlongProj_str))
+## global string variable denoting coordinate projection system to be used
+
+# Create a SpatialPoints class object for station locations
+stationTX_sp <- SpatialPoints(
+  coords = stationInfo_df[c(1,2)], # Longitude / Latitude coordinates
+  proj4string = CRS(g_latlongProj_str)
+)
+
+# Plotting the map and location points
+plot(mapTX_sp, axes=T)
+points(stationTX_sp, pch=19, col="blue")
+title(main="Station locations in TX")
+```
+
+# 1. Distribution of wind speed
+It is not hard to expect that the distribution of wind speeds is heavily skewed by extreme large values and have a wide range. Square root transformation of the distribution looks much more close to being symmetric around the center, but now the many zero values at the lower tail end heavily affect the shape of the distribution. Future modelling attempts may or may not need to account for the transformation of response depending on their distributional assumptions.
+
+```{r dist_windSpeed}
+# A data frame of Wind speed observations
+c_windSpeed_df <- TX_df %>% 
+  select(HOURLYWindSpeed) %>% 
+  transmute(windSpeed = HOURLYWindSpeed,
+            sqrtWindSpeed = sqrt(HOURLYWindSpeed)) ## Sqrt transform.
+
+# Customized histogram graphics.
+customHistDensity_fn <- function(df, col) {
+  resultPlot <- ggplot(data=df, mapping=aes_string(col)) +
+    geom_histogram(
+      aes(y=..density..), colour="grey", fill="orange"
+    ) +
+    theme_bw()
+  resultPlot
+}
+
+# Two distribution histograms in one output.
+windSpeedDistPlot_g <- customHistDensity_fn(c_windSpeed_df, "windSpeed") 
+sqrtWindSpeedDistPlot_g <- customHistDensity_fn(c_windSpeed_df, "sqrtWindSpeed")
+windSpeedPlot_gm <- pairGG_fn(windSpeedDistPlot_g, sqrtWindSpeedDistPlot_g, 
+                              showStrips=T, xAxisLabels=c("Wind speed (MPH)", 
+                                                          "Sqrt wind speed"),
+                              ylab="Density", title="Distribution of wind speeds in TX")
+windSpeedPlot_gm
+##ggsave("003.01_wind-dist-TX.png", windSpeedPlot_gm, "png")
+```
+
+# 2. Diurnal patterns: Mean trend of intraday wind speed curves
+It is also easy to expect that long-term seasonality exists for wind curves. Plotting the run-sequence of daily averages of wind speed identify changes in both maximum and minimum wind speeds and the amount of variations. Less certain is the "average" wind curve acorss each hour within a day. Plotting hourly averages of wind speed across different days captures some recurrent patterns, but the variance across different wind speed curves is very high (not shown here).
+
+```{r windSpeed_avg_curve}
+# Summarise and plot wind speeds by day
+speedByDay_TX_g <- TX_df %>% 
+  group_by(Day=as.integer(Day)) %>% 
+  summarise(Avg = mean(HOURLYWindSpeed, na.rm=T)) %>% 
+  ggplot(mapping=aes(Day, Avg)) + 
+  geom_line() +
+  labs(x="Day of the year", y="Wind speed") +
+  theme_classic()
+
+# Summarise and plot wind speeds by hour within a day
+speedByHour_TX_g <- TX_df %>% 
+  group_by(Hour=as.integer(Hour)) %>% 
+  summarise(Avg = mean(HOURLYWindSpeed, na.rm=T)) %>% 
+  ggplot(mapping=aes(Hour, Avg)) + 
+  geom_line() +
+  labs(x="Hour", y="Wind speed") +
+  theme_classic()
+
+# Two time series plots in one output.
+speedByDayHour_TX_gm <- pairGG_fn(speedByDay_TX_g, speedByHour_TX_g,
+          showStrips=T, xAxisLabels=c("Day of year (1-365)", "Hour"),
+          ylab="Wind Speed (MPH)", title="Wind speed curves across time units")
+speedByDayHour_TX_gm
+##ggsave("003.02_avg-wind-day-hour-TX.png", speedByDayHour_TX_gm, "png")
+```
+
+Since statistical modelling for wind speed predictions attempt at moddeling short-term variations over a narrow time window, ranging from few hours to a day, obtaining information about the mean trend of an "average" intraday wind curve can be of interest. Temporal or spatiotemporal predictive models then can subtract out the mean trend from the original series and estimate the latent residual process. A GAM model is fitted to the wind speed against two variables: $t$, the hour of the day, and $d$, the day of the year, indexed as an integer from 1 to 365(6). A heatmap plot of intraday wind curves against the hour and the day is produced below. The idea and the practice, including the use of package `mgcv`, have been already described in *Tupper, Matteson, and Anderson, 2015*.
+
+```{r GAM_fitting}
+# Summarize wind speeds by hour and day
+intraDayTX_df <- TX_df %>% 
+  group_by(Day=as.integer(Day), Hour) %>% 
+  summarise(Avg = mean(HOURLYWindSpeed, na.rm=T))
+
+# GAM model fitted
+windAvgGAM_m <- gam(Avg ~ s(Day) + s(Hour), data=intraDayTX_df)
+c_gamPlot_df <- data.frame(
+  t=intraDayTX_df$Hour, c=intraDayTX_df$Day, fit=windAvgGAM_m$fitted.values
+)
+
+# Heatmap visualization
+gamHeatPlot_g <- ggplot(data=c_gamPlot_df, mapping=aes(t, c, z=fit, fill=fit)) +
+  geom_raster() +
+  geom_contour(color="white") +
+  labs(x="Hour", y="Day of year", fill="Fitted\n values", 
+       title="GAM fit: Mean wind speed") +
+  theme_bw()
+gamHeatPlot_g
+##ggsave("003.03_GAM-fit-contour-plot.png", gamHeatPlot_g, "png")
+```
+
+# 3. Distances and Correlations
+Another interesting aspect of spatial dataset is the relationship between distances and correlations between response of interest. First, a distance matrix between 47 sations is produced. Distances are normalized to take values between 0 and 1. 
+
+```{r dist_matrix}
+# Generic function to visualize dist/cor. matrices in heatmaps
+matrix2Heatmap_fn <- function(mat, ...) {
+  resultPlot <- ggplot(data=reshape2::melt(mat),
+                       aes(factor(Var1), factor(Var2), fill=value)) +
+    ## matrix is "melted" into tidy/suitable form for ggplot
+    geom_tile() +
+    labs(...) + # label arguments
+    theme_minimal()
+  resultPlot
+}
+
+# Simple normalizing function for Eucl. distances.
+normDist_fn <- function(x) (x-min(x)) / (max(x) - min(x))
+
+# For loop: computing pointwise Eucl. distances
+distMatTX <- matrix(NA, nrow(stationInfo_df), nrow(stationInfo_df))
+for (i in 1:(nrow(stationInfo_df)-1)) {
+  distMatTX[i,i] <- 0 ## Same point has distance zero
+  for (j in (i+1):nrow(stationInfo_df)) { 
+    ## when i != j
+    d <- distGeo(stationInfo_df[i, c("long", "lat")],
+                 stationInfo_df[j, c("long", "lat")])
+    ## computes geodesic distance on WGS84 ellipsoid
+    distMatTX[i,j] <- d
+    distMatTX[j,i] <- d
+  }
+  distMatTX[j,j] <- 0
+}
+
+# Plotting the matrix
+distMatPlot_TX_g <- distMatTX %>%
+  normDist_fn() %>%
+  matrix2Heatmap_fn(
+    x="Station ID", y="Station ID", fill="Distance\n Scaled"
+  )
+distMatPlot_TX_g
+##ggsave("003.04_distance-matrix-TX.png", distMatPlot_TX_g, "png")
+```
+
+Station ID 23 is on average the farthest removed from any of the other airports. It is El Paso International Airport, close to the border to Mexico and located in the Western tip of Panhandle region; it is also one of the higher stations, located `r stationInfo_df[23,"elevation"]` meters above ground.
+
+Now, correlation matrix is more tricky. Below there are raw codes that include some data wrangling to identify locations and time periods for which there exist missing values. The missing values occur in Kerrville Municipal Airport for three hours in a leap year: Feb. 29th, 2016.
+
+```{r cor_matrix}
+# Grouping wind speeds by their locations, days, and hours
+stationHourlyTX_df <- TX_df %>%
+  group_by(STATION_NAME, Day=as.integer(Day), Hour) %>%
+  summarise(Avg = mean(HOURLYWindSpeed, na.rm=T))
+
+# Not all stations have observations for all available days/hours
+# Identifying missing values
+c_exceptions_df <- stationHourlyTX_df %>%
+  group_by(Day, Hour) %>%
+  count() %>%
+  filter(n!=47)
+## 3 hours missing on the day of leap year
+c_leapyStations_df <- stationHourlyTX_df %>%
+  filter(Day==c_exceptions_df$Day, Hour==c_exceptions_df$Hour) %>%
+  select(STATION_NAME)
+c_exceptionNames <- unique(c_leapyStations_df$STATION_NAME)
+## Kerrville municipal airport, missing values for 18-20 on Feb 29, 2016.
+## Format missing values as `NA`s.
+stationHourlyTX_df <- stationHourlyTX_df %>%
+  ungroup() %>%
+  add_row(
+    STATION_NAME = "KERRVILLE MUNICIPAL AIRPORT TX US",
+    Day = c_exceptions_df$Day,
+    Hour = c_exceptions_df$Hour,
+    Avg = NA
+  )
+
+# For loop: computing Spearman correlations
+c_rows <- nrow(stationHourlyTX_df) / nrow(stationInfo_df) ## row number for cor. matrix
+stationMatTX <- matrix(NA, c_rows, nrow(stationInfo_df))
+## Wind speeds are concatenated for each station
+for (i in 1:nrow(stationInfo_df)) {
+  stationMatTX[,i] <- filter(stationHourlyTX_df,
+                             STATION_NAME == stationInfo_df[i, "name"])$Avg
+}
+## Now, compute the correlation matrix from the matrix above:
+corMatTX <- stationMatTX %>%
+  cor(method="spearman", use="na.or.complete")
+
+# Plotting the matrix
+corMatPlot_TX_g <- corMatTX %>%
+  matrix2Heatmap_fn(
+    x="Station ID", y="Station ID", fill="Spearman\n Correlation"
+  )
+corMatPlot_TX_g
+##ggsave("003.05_cor-matrix-TX.png", corMatPlot_TX_g, "png")
+```
+
+It is notable that the information visualized in the distance matrix and the correlation matrix do not necessarily align. For example, El Paso International Airport do not seem to be an outlier from this plot. On the other hand, ID 24: Fort Stockton County Airport, and ID 47: Winkler County Airport, are on average the most uncorrelated with any of the other airports, despite their not being especially identifiable on the distance matrix. Their elevations also do not seem to be sufficient explaining features for such uncorrelatedness. One possible explanation can be particular geographic features of their locations; Panhandle region of Texas is known to have much wind, and the abundance of valleys and peaks may introduce much more variance into wind patterns relative to other stations.
+
