@@ -1,0 +1,685 @@
+---
+title: "Comparison of Various Tests For Randomness"
+author: "DH Lee, Youngsoo Baek"
+date: "2017.5.16."
+output: 
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE,fig.width=16, fig.height=9,fig.align='left'}
+library(itsmr)
+library(stats)
+library(TSA)
+library(randtests)
+```
+
+\section{Introduction}
+
+The objective of our project was comparing performance of various goodness of fit tests that test the randomness of time series. Our project was motivated by how different tests like Ljung-Box and difference sign tests can give wildly different results depending on certain characteristics of the series being tested. This project mainly consists of two parts. In the first portion, we examined the theory behind Box-Pierce derivation and the two parametric test statistics that employ this procedure, Box-Pierce and Ljung-Box. In the second portion, we simulated different time series models and compared performances of several parametric and non-parametric tests, from which we will make inference on their powers and noticeable characteristics.
+
+\section{Goodness of Fit Tests for Time Series}
+
+When we have fit a model to a series, a useful way of examining the adequay of this fit model is applying a diagnostic method to the residuals. There are several tests that can be applied to the residuals. Each of these tests checks the null hypothesis that the residuals are a series of independent (Normal) variates. 
+
+\begin{itemize}
+\item Box-Pierce test
+\item Ljung-Box test
+\item McLeod-Li test
+\item Difference sign test
+\item Turning point test
+\item Rank test
+\end{itemize}
+
+Box-Pierce test, Ljung-Box test, and McLeod-Li test are parametric tests, and their test statistic distribution is similarly derived from the Box-Pierce derivation procedure (which is discussed in the next section). difference sign test is a non-parametric test that checks whether the sign of difference between given two points is positive or negative. The difference sign test checks the randomness of the residuals by testing whether there is a constant pattern of increase or decrease in the series. Turning point test is a non-parametric test that checks whether a middle point in given three points has the highest or lowest value. The turning point test checks the randomness of the residuals by testing whether there are sufficient fluctuations in the series to consider each point independent from another. Rank test is a more elaborate form of  test that checks the rank of a series instead of sign of difference between points. For simplification purposes, this test is not considered in our project.
+
+The three non-parametric tests have existed as a more general form of testing independence of a sequence of random variables as early as the 18th century. Until Box and Pierce published their paper in 1970, they were the sole methods of testing the randomness of time series. The `test()` function of `itsmr` package still contains these tests as they make few assumptions about the distribution under test and have general applicability. Our project aims at comparing the performance of three parametric tests, difference sign test, and turning point test across various time series simulated with a pre-set ARMA model. We focus on the general comparison of test power across the five tests, and whether certain test performs better than the other for a series generated from a certain model.
+
+\section{Theoretical Background: Box-Pierce derivation}
+The motivation for looking at the Box-Pierce derivation is to get a better understanding of what parametric tests are actually doing when they tests a series. As mentioned above, the three main parametric tests follow from or slightly modify the Box-Pierce derivation procedure. All three test statistics use the distribution of the sum squared of residual autocorrelations to check whether the residuals are independent. Box-Pierce derivation shows how we can approximate this distribution by establishing a linear relationship between model iid autocorrelations and sample residual autocorrealtions. Ljung-Box test statistic, as seen later in this section, is a modification to Box-Pierce statistic that theoretically gives more accurate test results at smaller sample size. It should be noted that though McLeod-Li test is not included in this section, it also is a slight modification to the Box-Pierce test.
+
+\subsection{Box-Pierce Derivation}
+\subsubsection{Distribution of iid noise autocorrelations}
+The general causal ARIMA($p,d,q$) model can be stated as the following simple form:
+$$\phi(B)(1-B)^dX_t = \theta(B)Z_t$$
+where $\phi(B)=1-\phi_1 B - \dots - \phi_p B^p$, $\theta(B)=1+\theta B + \dots + \theta_q B^q$, and $\{Z_t\} \sim WN(0, \sigma^2)$, and where the roots of polynomial $\phi(z)$ and $\theta(z)$ lie outside the unit circle. Since the tests cannot check more exceptional cases of uncorrelated but not independent residuals, here we assume that $Z_t$ is an iid noise.
+
+In this model, the White Noise sequence $Z_t$ has the following autocorrelation at lag $k$:
+$$\rho(k) = \frac{\Sigma Z_t Z_{t-k}}{\Sigma Z_t^2}$$
+
+The empirically known distribution of $\rho(k)$ is a Gaussian distribution centered at mean 0 with the following variance.
+
+$$V(\rho(k))=\frac{n-k}{n(n-2)}\approx\frac{1}{n} \quad (\mbox{for large}~n)$$
+
+
+Suppose we have a correlation vector $\mathbf{\rho}=(\rho(1) \dots \rho(m))'$ for sufficiently large $m$. Then, $\rho$ has a multivariate Normal distribution as below:
+
+$$\mathbf{\rho} \sim N(\mathbf{0},(1/n)I)$$
+
+Note we have approximated $V(\rho(k))$ for large $n$ to simplify the covariance matrix of $\mathbf{\rho}$. Therefore, we have the distribution of the sum squared of iid noise autocorrelations:
+$$n \Sigma_{k=1}^{m} \rho^2(k) \sim \chi_m^2$$
+
+The insight of Box-Pierce derivation is that if the residual series $\hat Z_t$ is iid noise, then it should display similar behaviors as the model iid noise $Z_t$. Therefore, the below procedure attempts to approximate the distribution of the sum squared of **sample** residual autocorrelations $\hat \rho(k)$.
+
+\subsubsection{Distribution of AR process residual autocorrelations}
+For our project, we confine our interest to causal AR processes without loss of generality. Box and Pierce (1970) have shown that MA and ARMA processes behave similar behavior as AR processes and therefore the same test can be applied to the residuals in those cases.
+
+The general causal AR($p$) model is stated as:
+
+$$\phi(B)X_t = Z_t$$
+
+where the roots of polynomial $\phi(z)$ lie outside the unit circle. Also, we can express $Z_t$ in terms of $X_t$ as
+$$Z_t = \psi(B)X_t$$
+
+where $\psi(B)=\phi^{-1}(B)$.
+
+To approximate the distribution of the sum squared sample residual autocorrelations $\Sigma \hat \rho^2(k)$, we can try establishing a linear relationship between $\rho(k)$ and $\hat \rho(k)$. We can approximate $\hat \rho(k)$ by a first order Taylor expansion about point $\hat \phi=\phi$. This is possible because we know the mean squared error of $\hat \phi$, $E(\phi - \hat \phi)^2$, is of order $1/n$. Below, we use notation $\dot \phi$ for expressing variable of function $\hat \rho(k)$ since $\phi$ is a fixed model parameter. Notation $\dot Z_t$ is used in similar context.
+
+$$
+\begin{aligned}
+\hat\rho(k) &= \rho(k) + \Sigma_{j=1}^{p}(\phi_j - \hat{\phi_j}){\hat\delta_{jk}}+O_{p}(1/n) \\
+&\mbox{where} \quad \hat\delta_{jk}=-\frac{\partial \dot \rho(k)}{\partial \dot \phi_j}\bigg|_{\dot \phi = \hat \phi}
+\end{aligned}
+$$
+
+Now
+$$\hat \delta_{jk} = - \frac{\partial}{\partial \dot \phi_j} \frac{\Sigma \dot Z_t \dot Z_{t-k}}{\Sigma \dot Z_t^2}\bigg|_{\dot \phi = \hat \phi}$$
+
+But at $\dot \phi = \hat \phi$, the variance of $\dot Z_t$ is $\Sigma \hat Z_t^2$. This value is independent of variable $\dot \phi$. Therefore,
+
+$$\hat \delta_{jk}=-\frac{1}{\Sigma \hat Z_t^2} \frac{\partial}{\partial \dot \phi_j}{\Sigma \dot Z_t \dot Z_{t-k}}\bigg|_{\dot \phi = \hat \phi}$$
+
+where
+
+$$
+\begin{aligned}
+\Sigma \dot Z_t \dot Z_{t-k} &= \Sigma (\dot \phi(B)X_t)(\dot \phi(B)X_{t-k})\\
+&=\Sigma_t \Sigma_{i=0}^p \Sigma_{j=0}^p \dot \phi_i \dot \phi_j X_{t-i} X_{t-i-j} 
+\end{aligned}
+$$
+
+From the above expression, it follows that
+$$
+\begin{aligned}
+\hat \delta_{jk} &= -\frac{1}{\Sigma \hat Z_t^2} \frac{\partial}{\partial \dot \phi_j}\Sigma_t \Sigma_{i=0}^p \Sigma_{j=0}^p \dot \phi_i \dot \phi_j X_{t-i} X_{t-i-j} \\
+&= -\frac{\Sigma X_t^2}{\Sigma \hat Z_t^2} \Sigma_{i=0}^p \hat \phi_i [\hat \rho_X(k-i+j)+\hat \rho_X(k+i-j)] \\
+&= -\frac{\Sigma_{i=0}^p \hat \phi_i [\hat \rho_X(k-i+j)+\hat \rho_X(k+i-j)]}{\Sigma_{i=0}^p \Sigma_{j=0}^p \hat \phi_i \hat \phi_j \rho_X(i-j)}
+\end{aligned}
+$$
+
+where $\hat \rho_X(k)=\frac{\Sigma X_t X_{t-k}}{\Sigma X_t}$ is the sample autocorrelation of $X_t$ at lag $k$.
+
+Note that this partial derivative $\hat \delta_{jk}$ is in sample terms. If we replace $\hat \phi$ and $\hat \rho_X$ with theoretical parameter and autocorrelation, $\phi$ and $\rho_X$, we get the expression for $\delta_{jk}$. But according to Bartlett's formula, $\hat \rho_X(k)=\rho_X(k) + O_p(1/\sqrt{n})$, and we know that $\hat \phi = \phi + O_p(1/\sqrt{n})$. This means that, in the Taylor expansion of $\hat \rho(k)$ in terms of $\rho(k)$, the partial derivative term $\hat \delta_{jk}$ is interchangeable with $\delta_{jk}$.
+
+Thus
+$$\delta_{jk}=-\frac{\Sigma_{i=0}^p \phi_i [\rho_X(k-i+j)+\rho_X(k+i-j)]}{\Sigma_{i=0}^p \Sigma_{j=0}^p \phi_i \phi_j \rho_X(i-j)}$$
+
+We can further simplify this expression by using the fact that, for an AR($p$) process,
+$$\rho_X(\nu) - \phi_1\rho_X(\nu-1)-\dots-\phi_p\rho_X(\nu-p)=\phi(B)\rho_X(\nu)=0$$
+
+For example, in AR(1) case this holds true because $\phi(B)\rho_X(\nu)=(1-\phi B)\rho_X(\nu)=\phi^\nu - (\phi)(\phi^{\nu-1})=0$.
+
+The simplified form of $\delta_{jk}$ is
+$$\delta_{jk}=\frac{\Sigma_{i=0}^p \phi_i \rho_X(k-j+i)}{\Sigma_{i=0}^p \phi_i \rho_X(i)}=\delta_{k-j}$$
+
+Immediately it is clear that $\delta_{jk}$ only depends on the "lag" of $k-j$.
+
+There are three properties of $\delta_{jk}$ we can see from this expression.
+\begin{itemize}
+\item $\delta_0=1$
+\item $\delta_\nu=0$ for $\nu < 0$
+\item $\phi(B)\delta_\nu={\Sigma_{i=0}^p \phi_i [\phi(B) \rho_X(\nu+i)]}/{\Sigma_{i=0}^p \phi_i \rho_X(i)}=0$
+\end{itemize}
+
+What is this $\delta_{jk}$? We know that for causal AR processes $Z_t = \psi(B)X_t$ where $\psi(B)=\phi^{-1}(B)$. We can set $\psi_\nu=0$ for $\nu < 0$. At $\nu=0$, we have no information on previous $X_t$, so $\psi_0$ can be set 1.
+
+Also, since, $\psi(B)\phi(B)=1$, we can expand each polynomial and get the following relation:
+$$\psi_\nu = \begin{cases} \phi_1\psi_{\nu-1}+\dots + \phi_{\nu-1}\psi_1 + \phi_\nu & \mbox{if}\quad \nu < p \\ \phi_1\psi_{\nu-1}+ \dots + \phi_p\psi_{\nu-p} & \mbox{if}\quad \nu \geq p  \end{cases}$$
+
+Multiplying polynomial $\phi(B)$ on either side, we find that $\phi(B)\psi_\nu=0$ for $\nu \neq 0$.
+
+This indicates that $\psi_\nu$ has the exact same properties as $\delta_\nu$. Therefore, we can now fully rewrite the Taylor expansion of $\hat \rho(k)$ about $\hat \phi=\phi$ and establish a linear relationship between $\rho(k)$ and $\hat \rho(k)$.
+$$\hat\rho(k) = \rho(k) + \Sigma_{j=1}^{p}(\phi_j - \hat{\phi_j}){\psi_{k-j}}+O_{p}(1/n)$$
+
+Let us express this linear relationship in terms of matrix multiplication, with vectors $\mathbf{\rho}$ and $\mathbf{\hat \rho}$ containing autocorrelations at different lags. To the order of $1/n$, we can write
+$$\mathbf{\hat \rho} = \mathbf{\rho + \Psi(\phi - \hat \phi)}$$
+
+where 
+
+$$
+\begin{aligned}
+\Psi= 
+\left( \begin{array}{ccccc} 
+1 & 0 & \dots & \dots & 0 \\
+\psi_1 & 1 & \dots & \dots & \vdots \\
+\vdots & \psi_1 & \ddots & & \vdots \\
+\vdots &  &  & \ddots & 1 \\
+\vdots & \vdots & & & \vdots \\
+\psi_{m-1} & \psi_{m-2} & \dots & \dots & \psi_{m-p}
+\end{array} \right)
+\end{aligned}
+$$
+
+Note that here, $\mathbf{\hat \rho}'\mathbf{\Psi}=\mathbf{0}$. This follows from the fact that residuals $\hat Z_t$ and $X_{t-j}$ are uncorrelated for $1 \leq j \leq p$, that is,
+$$\Sigma_{t=p+1}^n \hat Z_t X_{t-j} = 0$$
+
+and thus
+
+$$
+\begin{aligned}
+0 &= \Sigma_t \Sigma_k \hat \psi_k \hat Z_t \hat Z_{t-k-j} \\
+&= \Sigma_k \hat \psi_k \hat \rho(k+j) \\
+&= \Sigma_k \psi_k \hat \rho(k+j) + O_p(1/n)
+\end{aligned}
+$$
+
+Thus, $\mathbf{\hat \rho}'\mathbf{\Psi}=\mathbf{0}$. Equivalently, $\mathbf{\Psi' \hat \rho} = \mathbf{0}$.
+
+$Q=\Psi(\Psi'\Psi)^{-1}\Psi'$ (notice it has an idempotent form). Multiplying the former equation of linear relationship between $\mathbf{\rho}$ and $\mathbf{\hat \rho}$, we have
+
+$$
+\begin{aligned}
+Q \mathbf{\hat \rho} &= Q \mathbf{\rho} + \mathbf{\Psi(\phi - \hat \phi)} \\
+\mathbf{0} &= Q\mathbf{\rho + \Psi(\phi - \hat \phi)} \\
+&= Q\mathbf{\rho + \hat \rho - \rho} \\
+\implies \mathbf{\hat \rho} &= (I - Q) \mathbf{\rho}
+\end{aligned}
+$$
+
+Now, we can finally compare the distributions of model iid autocorrelations and sample residual autocorrelations thus:
+$$
+\begin{aligned}
+\rho &\sim N(0, (1/n)I) \\
+\\
+\hat \rho &\sim N(0, (1/n)(I-Q)) 
+\end{aligned}
+$$
+
+$Q$ matrix is of rank $p$. Since the vector $\mathbf{\hat \rho}$ contains autocorrelations at lags from 1 through arbitrary $m$, the covariance matrix of $\mathbf{\hat \rho}$ is idempotent with rank $m-p$.
+
+\subsubsection{Box-Pierce test statistic}
+To look at the structure of this covariance matrix in more detail, let us compute the first few terms of covariance matrix of $\mathbf{\hat \rho}$ in AR(1) case.
+
+$$
+\begin{aligned}
+V(\hat \rho)=(1/n)(I-Q)=(1/n)\left( \begin{array}{cccc} 
+\phi^2 & -\phi + \phi^3 & -\phi^2 + \phi^4 & \dots \\
+-\phi+\phi^3 & 1-\phi^2 + \phi^4 & -\phi^3+\phi^5 & \dots \\
+-\phi^2 + \phi^4 & -\phi^3 + \phi^5 & 1-\phi^4 + \phi^6 & \dots \\
+\vdots & \vdots & \vdots & \ddots
+\end{array} \right)
+\end{aligned}
+$$
+
+Notice here that since $|\phi|<1$, the diagonal entries approach 1 and nondiagonal entries die out to 0. In fact, this shows that matrix $I-Q$ is similar to an identity matrix. In general, the covariance matrix of $\mathbf{\hat \rho}$ is very similar to that of $\mathbf{\rho}$ but has a reduced rank of $m-p$ instead of $m$.
+
+Now we have the distribution of the sum squared sample residual autocorrelations:
+$$n \Sigma_1^m \hat \rho^2(k) \sim \chi^2_{m-p}$$
+
+This is a remarkably similar distribution to that of $n \Sigma_1^m \rho^2(k)$ but with reduced degree of freedom. The **Box-Pierce test** statistic $Q(\rho(k)$ is defined as $n \Sigma_1^m \hat \rho^2(k)$ with an approximate chi-squared distribution with degree of freedom $m-p$.
+
+\subsection{Modification: Ljung-Box Test}
+Box and Pierce (1970) thus provided us with a useful test statistic distribution that can be used to check how much the sample residuals behave similarly to an iid noise. Ljung and Box (1978), however, found that at small sample sizes Box-Pierce test can often give inaccurate results. This was caused by an approximation made to the variance of model iid autocorrelation $\rho(k)$:
+
+$$V(\rho(k))=\frac{n-k}{n(n-2)} \approx \frac{1}{n}$$
+
+It is not hard to notice that at small sample size $n$, there can be a sizable difference between the two terms. Thus, a new test statistic was proposed that uses a more precise expression of $V(\rho(k))$. The **Ljung-Box test** statistic is defined thus:
+$$\tilde{Q}(\hat \rho(k)) = n(n-2)\Sigma_{k=1}^{m} (n-k)^{-1} \hat \rho^2(k)$$
+
+The Ljung-Box test is different from Box-Pierce test only because it makes a slight modification to the distribution of **model** iid noise autocorrelations. Therefore, the same linear relationship between $\rho(k)$ and $\hat \rho(k)$ still holds true.
+
+![Ljung and Box (1978)](BPLB.png)
+
+The figure is a comparison of Monte Carlo distributions for $Q(\rho)$ (Box-Pierce) and $\tilde{Q}(\rho)$ (Ljung-Box) from Ljung and Box (1978). The smooth curve is a chi-squared distribution with degrees of freedom 30. It is immediately evident from the figure that the distribution of $Q(\rho)$ has a significant mean bias.
+
+The Box-Pierce test is not without its advantage. Ljung and Box (1978) make clear that, while unclear in this figure, the distribution of $Q(\rho)$ has a smaller variance than $\tilde{Q}(\rho)$ that is much closer to the variance of chi-squared distribution $2m$. However, in most practical cases it is clear that the mean bias effect is so great that whatever gains from the smaller variance will be offset.
+
+We have thus seen the theoretical background behind Box-Pierce and Ljung-Box tests. Theoretically, Ljung-Box test should show a better performance than Box-Pierce test when the sample size is relatively small. As the sample gets larger, the distribution of the two test statistics will become equivalent and the choice between two tests will be an indifferent one.
+
+
+\section{Simulations}
+
+In this portion of the project, we generated various time series from different AR (ARMA) models and ran randomness tests on those series. The objective was to compare whether a certain test performs better than the other in checking randomness of the series. In the following sections, we will compare our results for different models using a plot of acceptance rate of each test against increasing sample size. The different models we used are AR(1), AR(2), ARMA(1,1), ARMA(2,2), and generic AR (ARMA) models with linear trend and seasonality.
+
+Different functions from different packages are used for our simulation. Box-Pierce and Ljung-Box test functions are included in `stat` package. McLeod-Li test function is included in `TSA` package. Difference sign and turning point tests are included in `randtest` package.
+
+\subsection{Simulation: R Code}
+
+```{r,echo=TRUE}
+NormTest<-function(N){
+  accept=as.data.frame(matrix(NA,ncol=5,nrow=1000))
+
+  Result=as.data.frame(matrix(NA,ncol=5))
+for (j in N){
+for (i in 1:1000){
+  Nseries<-rnorm(j,0,1)
+  BP<-ifelse(Box.test(Nseries,lag=1,type=c("Box-Pierce"),fitdf=0)$p.value>0.05,1,0)
+  LB<-ifelse(Box.test(Nseries,lag=1,type=c("Ljung-Box"),fitdf=0)$p.value>0.05,1,0)
+  ML<-ifelse(McLeod.Li.test(y=Nseries,gof.lag=1,plot=FALSE)$p.value>0.05,1,0)
+  DS<-ifelse(difference.sign.test(Nseries)$p.value>0.05,1,0)
+  TP<-ifelse(turning.point.test(Nseries)$p.value>0.05,1,0)
+
+  accept[i,]<-cbind(BP,LB,ML,DS,TP)
+
+}
+result<-apply(accept,2,sum)/1000
+Result<-rbind(Result,result)
+}
+colnames(Result)<-c("BoxP","LjungB","McLeod",'DiffS',"TurnP")
+output<-cbind(N,Result[-1,])
+print(output)
+
+with(output,plot(N,BoxP,"b",ylim=c(0,1),ylab="PropAccept",
+                 main="Acceptance of IID H0",xlab="Sample Size"))
+points(output$N,output$LjungB,"b",col="red")
+points(output$N,output$McLeod,"b",col="blue")
+points(output$N,output$DiffS,"b",col="magenta")
+points(output$N,output$TurnP,"b",col="green")
+legend('bottomleft', legend=c("BoxP","LjungB","McLeod","DiffS","TurnP"),
+       col=c("black","red","blue","magenta","green"),
+       lty=1,cex=0.8)
+
+}
+
+```
+
+This function is one example of the functions we used to simulate time series realizations of a certain model. The function takes in a vector specifying sample size, an AR (ARMA) model, and other elements needed such as the order of linear polynomial trend (the above example simulates IID Normal noise instead of an ARMA model). The function creates realizations of the model and runs our five choice of goodness of fit tests. If the test p-value is greater than 0.05, the test is recorded as have failed to reject the null hypothesis. The whole process is repeated 1000 times. The proportions of "acceptances" (when the test fails to reject null hypothesis) out of 1000 runs are returned in the forms of matrices and plots against sample size.Though technically a test does not "accept" the null hypothesis even when it fails to reject it, here we will frequently say that the test "accepts" the null hypothesis for simplicity purposes.
+
+Some of the plots that best serve our interests of comparing different test results across distinctive models are included in the following sections. For a full list of plots and tables for various models we simulated, see appendix.
+
+\newpage
+
+\subsection{IID Normal}
+
+We ran the tests on a Gaussian, iid noise as a general point of reference. As expected, all tests accept the series as iid noise around 95% of the total runs.
+
+![iid Gaussian noise](NormPlot.PNG)
+
+\newpage
+
+\subsection{AR(1) with $\phi = 0.5$}
+
+For a fairly generic AR(1) model, with $\phi=0.5$, most tests perform quite well. Box-Pierce and Ljung-Box acceptance rates drop quickly, rejecting almost 100% of the time at $n=100$. Ljung-Box acceptance rates drops slightly faster than that of Box-Pierce in initially small $n$, although the two curves converge onto one another after $n=100$. McLeod-Li and Turning point tests show relatively weak performance even when $n=100$, but at $n=300$ their acceptance rates drop down to about 5%. Difference sign test fails to distinguish this AR series from random noise.  
+
+What is noticeable here and the subsequent simulations is the extremely weak power of difference sign test even at sufficiently large sample sizes. This is becuase the nature of difference sign test makes it hard to distinguish series that nearly symmetrically oscillate around the center from random noise (Kendall and Stuart, 1958). Difference sign test has strong power when the series has a trend of constant increase or decrease, as will be shown below for series with linear trends.
+
+![AR(1) model, phi=.5](AR0.5plot.PNG)
+
+\newpage
+
+\subsection{AR(1) with $\phi = 0.1$}
+
+Next, an AR(1) model with small $\phi$ is set. Realizations of this model have very slight patterns and are hard to distinguish from random iid noise. Unsurprisingly, all tests perform poorly until $n=100$, when Box-Pierce and Ljung-Box tests begin to reject in more cases with larger sample size. Turning point test performs slightly better than McLeod-Li test and difference sign test, but they all fail to reject too many times.
+
+![AR(1) model, phi=.1](AR(0.1)plot.PNG)
+
+\newpage
+
+\subsection{AR(1) with $\phi = 0.9$}
+
+For an AR(1) model with $\phi=0.9$, all tests except difference sign test shows a rapid decay of acceptance rates. All three parametric tests reject effectively 100% of the runs at $n=100$, and Turning point acceptance rate converges to 0 at $n=300$. This plot shows a generic pattern as the roots of polynomial $\phi(z)$ approach the unit circle.
+
+When $\phi$ is smaller than .5, all tests suffer to distinguish the series from random noise. When $\phi$ is larger than .5, all tests except difference sign test shows a rapid decay of acceptance rates. Ljung-Box and Box-Pierce tests show the fastest decay of acceptance rates across all cases. For a similar simulations of AR(2) models, see appendix.
+
+![AR(1) model, phi=.9](AR0.9plot.PNG)
+
+\newpage
+
+
+
+\subsection{ARMA(1,1) with $\phi = 0.5$, $\theta=0.5$}
+
+For a generic ARMA(1,1) model where $\phi=\theta=.5$, all tests except difference sign test shows a rapid decay of acceptance rates, converging down to zero at $n=100$. The curve for Ljung-Box again drops faster than that for Box-Pierce, and the two tests quickly converge onto one another at $n=50$.
+
+In the case of ARMA models, similarly as in AR models, the tests commit less Type II errors as the roots of polynomials $\phi(z)$ and $\theta(z)$ lie closer to the unit circle. As $\phi$ and $\theta$ get smaller, therefore, the roots will lie farther outside the unit circle and the tests will suffer distinguishing the series from random noise. A different example for ARMA(2,2) model is given in the appendix.
+
+![ARMA(1,1) model, phi=.5, theta=.5](ARMA(1,1)-3plot.PNG)
+
+\newpage
+
+
+
+\subsection{AR(1) with a linear trend, $\phi = 0.5$}
+
+Next we applied tests to series with a linear trend. We set a generic AR(1) model with $\phi=0.5$ and added a trend component, a first-degree polynomial $2+0.5t$.
+
+Box-Pierce, Ljung-Box, and McLeod-Li tests are very sensitive to the trend, so they reject 100% of the cases at $n=20$. Difference sign test performs better than turning point test, as its acceptance rate drops to 4% at $n=50$, whereas the turning point test only reaches a similar point of 6% at $n=100$. This finding aligns with our former remark that difference sign test has strong power against series with constant increase or decrease. It should be noted, however, that both nonparametric tests are performing very poorly given that the series has so obvious a trend. A similar plot for ARMA(1,1) cases is given in the appendix (curiously, though, difference sign test here performs worse than turning point test).
+
+
+
+![AR(1) model with linear trend](AR1Linplot.PNG)
+
+\newpage
+
+\subsection{AR(1) with seasonality, $\phi = 0.9$}
+
+We also simulated the same AR(1) model but with seasonality, a pattern determined by sinusoidal curve $k\mbox{sin}\frac{2\pi t}{d}$. Here, the pattern is annual, with period $d=12$.
+
+The three parametric tests and turning point tests all show a quick decay of acceptance rates, while the differnce sign test is showing poor performance, as expected from a seasonal, fluctuating series.
+
+Theoretically, turning point test has relatively strong power against series with seasonality rather than trend (Kendall and Stuart, 1958). In this plot, however, it is hard to discern this fact because all other three parametric tests are very sensitive to obvious seasonal deviations of the series.
+
+![AR(1) model with seasonality](AR1Seasonplot.PNG)
+
+\newpage
+
+\section{Conclusion}
+
+Several useful observations can be drawn from our simulations.
+\begin{itemize}
+\item All tests cannot accurately distinguish AR or ARMA series when the roots of polynomial $\phi(z)$ and $\theta(z)$ lie close to the unit circle. Specifically, in AR(1) case, the tests show commit less Type II errors as the magnitude of $\phi$ increases.
+\item Ljung-Box and Box-Pierce tests perform better than other tests across all simulated models.
+\item Ljung-Box performs slightly better than Box-Pierce at a sample size less than 100, but both tests show nearly identical results as the sample size increases.
+\item McLeod-Li test performs worse than Ljung-Box and Box-Pierce tests, but better than the two non-parametric tests in most cases.
+\item Turning point and difference sign tests perform relatively worse than the parametric tests across almost all cases.
+\item Difference sign test cannot distinguish most ARMA models that fluctuate around the center from random iid nosie. 
+\end{itemize}
+
+Based on our results, we will advise the readers to give more weights to Ljung-Box and Box-Pierce tests over others in most practical cases, as they have the strongest powers. The difference between these two tests is practically null in large sample sizes. One should be cautious of relying on non-parametric tests, particularly difference sign test, which should be primarily reserved for testing trend of the data. When the difference sign test rejects a null hypothesis, this in fact is a strong evidence against the null hypothesis. Also, a note of caution is also needed not to purely rely on the parametric tests, since our simulations in this project all compare the performance of tests based on a model we previously set. This indicates that, while Ljung-Box and Box-Pierce tests have strong powers, they are slightly more prone to Type I errors than other tests. Therefore, as long as a series does not display any visible pattern deviating from iid noise, non-parametric tests can still serve as a point of reference for subjective judgment.
+
+
+
+\section{References}
+
+ Box, G.E.P. and Pierce, D., "Distribution of Residual Autocorrelations in Autoregressive-Integrated Moving Average Time Series Models," Journal of the American Statistical Association, 65 (December 1970) 1509-1526.
+
+ Ljung, G.M. and Box, G.E.P., "On a Measure of Lack of Fit in Time Series Models," Biometrika, 65 (1978) 297-304.
+
+Kendall, M.G. and Stuart, A., The Advanced Theory of Statistics, Volume 3: Design and Analysis, and Time Series, London:Griffin, 1958.
+
+
+\section{Appendix}
+
+\subsection{Additional Plots}
+
+\subsubsection{AR(2) models}
+![$\mathbf{\phi}$=(.3,-.1)](AR2-1plot.PNG)
+![$\mathbf{\phi}$=(0.758,-0.758)](AR2-2plot.PNG)
+\newpage
+
+\subsubsection{ARMA(1,1) models with different coefficients}
+![$\mathbf{\phi}$=$\mathbf{\theta}$=.01](ARMA(1,1)-1plot.PNG)
+\newpage
+![$\mathbf{\phi}$=$\mathbf{\theta}$=.1](ARMA(1,1)-2plot.PNG)
+\newpage
+
+\subsubsection{ARMA(2,2) model}
+![ARMA(2,2), $\mathbf{\phi}$=-0.057, $\mathbf{\theta}$=-0.029](ARMA(2,2)plot.PNG)
+\newpage
+
+\subsubsection{ARMA(1,1) model and linear trend}
+![$\mathbf{\phi}$=$\mathbf{\theta}$=.5. First-degree polynomial trend.](ARMA(1,1)Linplot.PNG)
+\newpage
+
+\subsection{Tables of Acceptance Rates}
+
+\subsubsection{IID Normal}
+
+![Acceptance rates for iid Normal Series](NormMat.PNG)
+
+\subsubsection{AR(1) with $\phi = 0.1$}
+
+![Acceptance rates for AR1 with $\phi=0.1$](AR(0.1)mat.PNG)
+
+\newpage
+
+\subsubsection{AR(1) with $\phi = 0.5$}
+
+![Acceptance rates for AR1 with $\phi=0.5$](AR0.5mat.PNG)
+
+\subsubsection{AR(1) with $\phi = 0.9$}
+
+![Acceptance rates for AR1 with $\phi=0.9$](AR0.9mat.PNG)
+
+\newpage
+
+\subsubsection{AR(2) with $\phi_1 = 0.3$, $\phi_2 = -0.1$}
+
+![Acceptance rates for AR2 with $\mathbf{\phi}=(0.3,-0.1)$](AR2-1mat.PNG)
+
+\subsubsection{AR(2) with $\phi_1 = 0.758$, $\phi_2 = -0.758$}
+
+![Acceptance rates for AR2 with $\mathbf{\phi}=(0.758,-0.758)$](AR2-2mat.PNG)
+
+\newpage
+
+\subsubsection{ARMA(1,1) with $\phi = 0.01$, $\theta=0.01$}
+
+![Acceptance rtes for ARMA(1,1) with $\phi=0.01$,$\theta=0.01$](ARMA(1,1)-1mat.PNG)
+
+\subsubsection{ARMA(1,1) with $\phi = 0.1$, $\theta=0.1$}
+
+![Acceptance rates for ARMA(1,1) with $\phi=0.1$,$\theta=0.1$](ARMA(1,1)-2mat.PNG)
+
+\newpage
+
+\subsubsection{ARMA(1,1) with $\phi = 0.5$, $\theta=0.5$}
+
+![Acceptance rates for ARMA(1,1) with $\phi=0.5$,$\theta=0.5$](ARMA(1,1)-3mat.PNG)
+
+\subsubsection{ARMA(2,2) with $\phi_1 = \theta_1 = -0.057$, $\phi_2 = \theta_2 = -0.029$}
+
+![Acceptance rates for ARMA(2,2) with $\mathbf{\phi}=(-0.057,-0.029)$,$\mathbf{\theta}=(-0.057,-0.029)$](ARMA(2,2)-1mat.PNG)
+
+\newpage
+
+\subsubsection{AR(1) with a linear trend, $\phi = 0.5$}
+
+![Acceptance rates for AR(1) with a linear trend](AR1Linmat.PNG)
+
+\subsubsection{ARMA(1,1) with a linear trend, $\phi = 0.5$, $\theta=0.5$}
+
+![Acceptance rates for ARMA(1,1) with a linear trend](ARMA(1,1)Linmat.PNG)
+
+\newpage
+
+\subsubsection{AR(1) with seasonality, $\phi = 0.5$}
+
+![Acceptance rates for AR(1) with seasonality](AR1Seasonmat.PNG)
+
+\newpage
+
+\subsection{R codes}
+
+\subsubsection{Simulation: iid Normal}
+
+```{r,echo=FALSE,eval=F}
+NormTest(c(10,20,30,50,100,300))
+```
+
+\subsubsection{Simulation: AR(1) series, phi=0.1}
+
+```{r,eval=FALSE}
+ARMATest<-function(N,a){
+  accept=as.data.frame(matrix(NA,ncol=5,nrow=1000))
+
+  Result=as.data.frame(matrix(NA,ncol=5))
+for (j in N){
+for (i in 1:1000){
+  Nseries<-sim(a,j)
+  BP<-ifelse(Box.test(Nseries,lag=1,type=c("Box-Pierce"),fitdf=0)$p.value>0.05,1,0)
+  LB<-ifelse(Box.test(Nseries,lag=1,type=c("Ljung-Box"),fitdf=0)$p.value>0.05,1,0)
+  ML<-ifelse(McLeod.Li.test(y=Nseries,gof.lag=1,plot=FALSE)$p.value>0.05,1,0)
+  DS<-ifelse(difference.sign.test(Nseries)$p.value>0.05,1,0)
+  TP<-ifelse(turning.point.test(Nseries)$p.value>0.05,1,0)
+
+  accept[i,]<-cbind(BP,LB,ML,DS,TP)
+
+}
+result<-apply(accept,2,sum)/1000
+Result<-rbind(Result,result)
+}
+colnames(Result)<-c("BoxP","LjungB","McLeod",'DiffS',"TurnP")
+output<-cbind(N,Result[-1,])
+
+with(output,plot(N,BoxP,"b",ylim=c(0,1),ylab="PropAccept",main="Acceptance of IID H0",xlab="Sample Size"))
+points(output$N,output$LjungB,"b",col="red")
+points(output$N,output$McLeod,"b",col="blue")
+points(output$N,output$DiffS,"b",col="magenta")
+points(output$N,output$TurnP,"b",col="green")
+legend('bottomleft', legend=c("BoxP","LjungB","McLeod","DiffS","TurnP"),col=c("black","red","blue","magenta","green"),lty=1,cex=0.8)
+
+
+
+print(output)
+
+}
+AR1_1<-specify(ar=0.1,ma=0,sigma2=1)
+TestAR1_1<-ARMATest(c(10,20,30,50,100,300),AR1_1)
+```
+
+\subsubsection{Simulation: AR(1) series, phi=0.5}
+
+```{r, eval=FALSE}
+AR1_2<-specify(ar=0.5,ma=0,sigma2=1)
+TestAR1_2<-ARMATest(c(10,20,30,50,100,300),AR1_2)
+s1<-sim(AR1_2,300)
+plotc(s1)
+```
+
+\subsubsection{ Simulation: AR(1) series, phi=0.9}
+
+```{r, eval=FALSE}
+AR1_3<-specify(ar=0.9,ma=0,sigma2=1)
+TestAR1_3<-ARMATest(c(10,20,30,50,100,300),AR1_3)
+```
+
+\subsubsection{Simulation: AR(2) series, roots=(-2,5), phi=(0.3,-0.1)}
+```{r, eval=FALSE}
+AR2_2<-specify(ar=c(0.3,-0.1),ma=0,sigma2=1)
+TestAR2_2<-ARMATest(c(10,20,30,50,100,300),AR2_2)
+```
+
+\subsubsection{ Simulation: AR(2) series, roots (-1.1,-1.2), phi=(0.758,-0.758)|
+
+```{r, eval=FALSE}
+AR2_1<-specify(ar=c(0.758,-0.758),ma=0,sigma2=1)
+TestAR2_1<-ARMATest(c(10,20,30,50,100,300),AR2_1)
+```
+
+
+\subsubsection{Simulation: ARMA(1,1) series, phi=0.01, theta=0.01}
+
+```{r, eval=FALSE}
+ARMA1_1<-specify(ar=0.01,ma=0.01,sigma2=1)
+TestARMA1_1<-ARMATest(c(10,20,30,50,100,300),ARMA1_1)
+```
+
+
+\subsubsection{Simulation: ARMA(1,1) series, phi=0.1, theta=0.1}
+```{r, eval=FALSE}
+ARMA1_2<-specify(ar=0.1,ma=0.1,sigma2=1)
+TestARMA1_2<-ARMATest(c(10,20,30,50,100),ARMA1_2)
+```
+
+\subsubsection{Simulation: ARMA(1,1) series, phi=0.5, theta=0.5}
+```{r, eval=FALSE}
+ARMA1_3<-specify(ar=0.5,ma=0.5,sigma2=1)
+TestARMA1_3<-ARMATest(c(10,20,30,50,100,300),ARMA1_3)
+s2<-sim(ARMA1_3,300)
+plotc(s2)
+```
+
+\subsubsection{Simulation: ARMA(2,2) series, roots=(5,-7), phi=theta=(-0.057,-0.029)}
+
+```{r, eval= FALSE}
+ARMA2<-specify(ar=c(-2/35,-1/35),ma=c(-2/35,-1/35),sigma2=1)
+TestARMA2<-ARMATest(c(10,20,30,50,100,300),ARMA2)
+```
+
+\subsubsection{Simulation: AR(1) model with linear trend}
+
+```{r,eval=FALSE}
+TrendTest<-function(N,a,m,n){
+
+  accept=as.data.frame(matrix(NA,ncol=5,nrow=1000))
+
+  Result=as.data.frame(matrix(NA,ncol=5))
+for (j in N){
+for (i in 1:1000){
+  index<-1:j
+  Nseries<-sim(a,j)+m*index+n
+  BP<-ifelse(Box.test(Nseries,lag=1,type=c("Box-Pierce"),fitdf=0)$p.value>0.05,1,0)
+  LB<-ifelse(Box.test(Nseries,lag=1,type=c("Ljung-Box"),fitdf=0)$p.value>0.05,1,0)
+  ML<-ifelse(McLeod.Li.test(y=Nseries,gof.lag=1,plot=FALSE)$p.value>0.05,1,0)
+  DS<-ifelse(difference.sign.test(Nseries)$p.value>0.05,1,0)
+  TP<-ifelse(turning.point.test(Nseries)$p.value>0.05,1,0)
+
+  accept[i,]<-cbind(BP,LB,ML,DS,TP)
+
+}
+result<-apply(accept,2,sum)/1000
+Result<-rbind(Result,result)
+}
+colnames(Result)<-c("BoxP","LjungB","McLeod",'DiffS',"TurnP")
+output<-cbind(N,Result[-1,])
+
+with(output,plot(N,BoxP,"b",ylim=c(0,1),ylab="PropAccept",main="Acceptance of IID H0",xlab="Sample Size"))
+points(output$N,output$LjungB,"b",col="red")
+points(output$N,output$McLeod,"b",col="blue")
+points(output$N,output$DiffS,"b",col="magenta")
+points(output$N,output$TurnP,"b",col="green")
+legend('topright', legend=c("BoxP","LjungB","McLeod","DiffS","TurnP"),col=c("black","red","blue","magenta","green"),lty=1,cex=0.8)
+
+print(output)
+
+}
+
+TestAR_trend1<-TrendTest(c(10,20,30,50,100,300),AR1_2,.5,2)
+index1<-1:300
+s3<-sim(AR1_2,300)+0.5*index1+2
+plotc(s3)
+```
+
+\subsubsection{Simulation: ARMA(1,1) model with linear trend}
+
+```{r,eval=FALSE}
+TestAR_trend2<-TrendTest(c(10,20,30,50,100,300),ARMA1_3,.5,2)
+index<-1:300
+s4<-sim(ARMA1_3,300)+0.5*index1+2
+plotc(s4)
+```
+
+\subsubsection{Simulation: AR(1) model with annual seasonality}
+
+
+```{r,eval=FALSE}
+SeasonTest<-function(N,a,d,k){
+
+  accept=as.data.frame(matrix(NA,ncol=5,nrow=1000))
+
+  Result=as.data.frame(matrix(NA,ncol=5))
+for (j in N){
+for (i in 1:1000){
+  index<-1:j
+  Nseries<-sim(a,j)+k*sin(2*pi*index/d)
+  BP<-ifelse(Box.test(Nseries,lag=1,type=c("Box-Pierce"),fitdf=0)$p.value>0.05,1,0)
+  LB<-ifelse(Box.test(Nseries,lag=1,type=c("Ljung-Box"),fitdf=0)$p.value>0.05,1,0)
+  ML<-ifelse(McLeod.Li.test(y=Nseries,gof.lag=1,plot=FALSE)$p.value>0.05,1,0)
+  DS<-ifelse(difference.sign.test(Nseries)$p.value>0.05,1,0)
+  TP<-ifelse(turning.point.test(Nseries)$p.value>0.05,1,0)
+
+  accept[i,]<-cbind(BP,LB,ML,DS,TP)
+
+}
+result<-apply(accept,2,sum)/1000
+Result<-rbind(Result,result)
+}
+colnames(Result)<-c("BoxP","LjungB","McLeod",'DiffS',"TurnP")
+output<-cbind(N,Result[-1,])
+
+with(output,plot(N,BoxP,"b",ylim=c(0,1),ylab="PropAccept",main="Acceptance of IID H0",xlab="Sample Size"))
+points(output$N,output$LjungB,"b",col="red")
+points(output$N,output$McLeod,"b",col="blue")
+points(output$N,output$DiffS,"b",col="magenta")
+points(output$N,output$TurnP,"b",col="green")
+legend('right', legend=c("BoxP","LjungB","McLeod","DiffS","TurnP"),col=c("black","red","blue","magenta","green"),lty=1,cex=0.8)
+
+print(output)
+
+}
+TestAR_season<-SeasonTest(c(10,20,30,50,100,300),AR1_3,12,.5)
+```
+
+
