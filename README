@@ -1,7 +1,4 @@
 Final Project Folder for CS134c, Spring 2018.
-[Student: please keep this file up-to-date.  Your grade depends on
- our ability to understand what your project has accomplished and
- how the software is used.]
 
 Student Name: Youngsoo Baek
 Mentor: Dzung Pham
@@ -9,7 +6,6 @@ Project Title: Rubik's Cube Game
 
 1. Describe (briefly) the files and folders found in this project.
    README - this file, an overview of the project
-   Contract.pdf - project proposal
    cube.py - Contains the class 'Cube' that represents a Rubik's Cube
    project.py - Contains functions needed to plot the Cube and run the Rubik's Cube game
    test_graphics.png - A test image of the Rubik's Cube graphics when project.py is run
