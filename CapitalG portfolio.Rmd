@@ -1,0 +1,258 @@
+---
+title: "A Look at Portfolio"
+author: "Youngsoo Baek"
+date: "11/14/2017"
+output:
+  pdf_document: default
+---
+
+```{r global_options, fig.align='center',include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+Since I came to know more about CapitalG and what it does as a company, I thought it will be a good idea to have a look at some of the statistics of the companies in CapitalG portfolio. This is a summary report of the most basic exploratory data analysis I did over two days. The ultimate goal is to address possible patterns in CapitalG's past investments and thereby construct a model that predicts future investment behaviors. Please be aware that the data I am using is manually collected from available open web source. The exact valuations of the companies are therefore nowhere near precise. 
+
+I have manually collected the data set from Crunchbase and each company's website. In case of public companies, their approximate values are computed from the balance sheets on NASDAQ website. It is saved in the following `csv` file that I have imported from MS Excel.
+
+```{r}
+cat("portfolio2.csv")
+```
+
+This data set includes 29 companies on the CapitalG portfolio with the following variables:
+
+* **Company**
+* **Industry**
+* **Location**
+* **Value**: Approximate company valuation figure at the time of initial investment
+* **FoundedYear**
+* **InvestYear**
+* **InvestMonth**
+* **InvestDay**
+* **Type**: Series/type of funding round
+* **Stage**: Early (before Series C, or other forms of early funding roudns); Late
+* **Lead**: Whether CapitalG was a lead investor
+* **Fund**: Amount of funding raised in the round of CapitalG initial investment
+* **Acquisition**: The number of acquisitions made by the company up before initial investment
+* **Current**: Approximate current valuation figure
+* **After**: Number of funding rounds CapitalG invested in after initial investment
+* **AcquiredYear**: The year the company was acquired (if acquired)
+* **AcquiredMonth**
+* **IPOYear**: The year the company filed for IPO (if it went public)
+* **IPOMonth**
+
+This analysis was done using `R`. The following packages are needed for reproducing the diagrams using the code:
+
+```{r,echo=TRUE,message=FALSE,warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(magrittr)
+```
+
+# Summary statistics
+First, a cursory look at the distribution across industries:
+
+```{r}
+portfolio <- read.csv("portfolio2.csv",header=TRUE)
+portfolio <- as.tibble(portfolio)
+portfolio %>%
+  group_by(Industry) %>%
+  summarise(count=n())
+```
+
+Another summary based on the companies' locations:
+
+```{r}
+portfolio %>%
+  group_by(Location) %>%
+  summarise(count=n())
+```
+
+The proportions of early and late stage investments:
+
+```{r}
+portfolio %>%
+  group_by(Stage) %>%
+  summarise(percentage=round(n()/29,4)*100)
+```
+
+The proportions of lead and non-lead investments:
+
+```{r}
+portfolio %>%
+  group_by(Lead) %>%
+  summarise(percentage=round(n()/29,4)*100)
+```
+
+
+```{r}
+portfolio$Region <- factor(
+    portfolio$Location,
+    exclude=c("WI","China","PA","GA","MA","NY")
+    )
+portfolio$Region <- factor(portfolio$Region,exclude=NULL)
+```
+
+The two figures reproduced below show the distribution of CapitalG investments over years, and the distribution of how old each company is. Since over the majority of companies are located in CA, the regions of each company are grouped into three categories: CA, India, or others.
+
+The two companies that were founded before 1990s are Renaissance Learning and Multiplan. More figures illustrating the distribution of companies across different regions and industries are attached at the end of this document.
+
+```{r,fig.cap="Investments over Years",fig.height=3}
+portfolio %>%
+  ggplot(aes(x=InvestYear,fill=Region)) +
+  geom_bar(aes(y=..prop..),na.rm=T) +
+  labs(y="Percentage")
+```
+
+```{r,fig.cap="Distribution of Company ages",fig.height=2.5}
+portfolio %>%
+  ggplot(aes(x=FoundedYear,fill=Region)) +
+  geom_bar(aes(y=..prop..),na.rm=T) +
+  labs(y="Percentage")
+```
+
+\clearpage
+
+# Linear growth in company value
+All companies in the portfolio except one show some increase in their worth since the initial investment. A safe assumption, therefore, is that a correlation exists between their past and current worth. Below, the companies' current worth are regressed on their initial worth at the time of initial investment (Figure 5). Both numbers are scaled down by 100 million dollars. The most recent four companies that received CapitalG funds in 2017 are excluded. As expected, there is a very strong linear relationship between the initial worth and the current value of the company ($R^2_{adj}=0.986$). The residuals of this linear fit are plotted at the Figure attached at the end of this document.
+
+```{r}
+mymodel <- portfolio %>%
+  mutate(Value=Value/10^8, Current=Current/10^8) %>%
+  lm(Current~Value,.)
+summary(mymodel)
+```
+
+The linear fit suggests that the company's current (future) valuation increases by a dollar with a dollar increase in its initial worth. This rate of change is mostly due to outlier companies. Figure 3 shows that the apparent outliers with extremely high current worth are Snap Inc., Airbnb, and Stripe. These companies receieved CapitalG Funding in 2016, and they have very high valuation figures but did not show significant growth over a year. Excluding these possible outlier observations significantly reduces the explanatory power due to the smaller sample and increased variance.
+
+```{r}
+mymodel.adj <- portfolio %>%
+  filter(Value < 0.9*10^10 & 2017-InvestYear>0) %>%
+  mutate(Value=Value/10^8, Current=Current/10^8) %>%
+  lm(Current~Value,.)
+summary(mymodel.adj)
+```
+
+\clearpage
+
+```{r, fig.cap="Current value on initial worth",fig.height=2.5}
+portfolio %>%
+  filter(2017-InvestYear>0) %>%
+  ggplot(mapping=aes(x=Value/10^8,y=Current/10^8)) +
+  geom_point(na.rm=T) +
+  geom_abline(
+    aes(
+      intercept=mymodel$coefficients[1],
+      slope=mymodel$coefficients[2]
+    )
+  ) +
+  labs(x="Initial worth (in $100 mil.)", y="Current value")
+```
+
+```{r,fig.cap="Current value on initial worth (zoomed in)",fig.height=2.5}
+portfolio %>%
+  filter(Value < 0.9*10^10) %>%
+  ggplot(mapping=aes(x=Value/10^8,y=Current/10^8)) +
+  geom_point(na.rm=T) +
+  geom_abline(
+    aes(
+      intercept=mymodel$coefficients[1],
+      slope=mymodel$coefficients[2]
+    )
+  ) +
+  labs(x="Initial worth (in $100 mil.)", y="Current value")
+```
+
+# Relationship between Funding raised and Growth
+Another possible relationship can be that between the amount of funding raised (from CapitalG and other lead investors) and the company's growth. Here we use the notion of company's growth as the its average worth increased since CapitalG investment. The most recent four companies that received CapitalG funds in 2017 are excluded.
+
+No apparent pattern is discernible in the plot (Figure 5 below). Surveymonkey and Lyft received more than 4 billion dollars of funding and are clear outliers. Lending Club is an outlier company in terms of its high average growth compared with the funding it received. 
+
+```{r}
+portfolio<- portfolio %>%
+  mutate(
+    fund=Fund/10^8,
+    growth=(Current-Value)/(10^8*(InvestYear - FoundedYear))
+  )
+portfolio %>%
+  filter(fund > 4 | growth >6 | growth<=-2) %>%
+  dplyr::select(Company,fund,growth) 
+```
+
+\newpage
+
+Intuitively, such a plot with such few samples resist simplistic linear fit. As expected, any linear regression model has extremely low explanatory power ($R^2\approx 0.02$). This result requires further examination, since it impplies that there is no clear relationship between the funding a company raised (which is closely linked to its valuation at the time) and its growth. A more detailed analysis using a more expansive data set will be able to address this issue more accurately and will help impprove future Investment Team decisions.
+
+A Figure that plots the two linear fits (with and without outlier companies that received more than 2 mil. dollars) is attached at the end of this document.
+
+```{r,fig.height=2.5,fig.cap="Growth plotted against Funding raised"}
+
+growthplot<-portfolio %>%
+  filter(2017-InvestYear > 0) %>%
+  ggplot(mapping=aes(x=fund,y=growth)) +
+  labs(x="Funding raised (in 100 million dollars)",y="Average annual growth")
+  
+growthplot +
+  geom_point(aes(colour=Stage),na.rm=T)
+```
+
+# Further questions
+This analysis is obviously limited by constraints in time and resources. Addressing them will ultimately help us construct a model that can more accurately identify the investment patterns of CapitalG and predicts future investments of CapitalG for a certain company. These issues include:
+
+i. Improving the data set, both in precision and in the variables included
+ii. Trend analysis of company revenues over years
+iii. More comprehensive modelling of company growth
+iv. Identifying possible patterns/trends in CapitalG investment decision given the company's size, value, and revenues
+
+
+-----
+
+\clearpage
+
+```{r,fig.cap="Industry distribution"}
+portfolio[!is.na(portfolio$Stage),] %>%
+  ggplot(aes(Industry,fill=Stage)) +
+  geom_bar() +
+  coord_flip() +
+  labs(y="Number of companies")
+```
+
+\clearpage
+
+```{r,fig.cap='Industry distribution across regions',warning=F,message=F}
+portfolio %>%
+  ggplot(mapping=aes(x=Industry,y=Region)) +
+  geom_count(na.rm=T) +
+  coord_flip()
+```
+
+
+```{r,fig.cap="Residual plot"}
+ggplot(mapping=aes(x=mymodel$fitted.values,y=mymodel$residuals)) +
+  geom_point(na.rm=T) +
+  geom_hline(yintercept=0) +
+  labs(x="Fitted values", y="Residuals")
+```
+
+```{r,message=F,fig.cap="Linear fit to Growth on Funding"}
+portfolio.adj <- portfolio %>%
+  filter(fund < 2)
+mymodel2.adj <- portfolio.adj %>%
+  lm(growth~fund,.)
+
+growthplot +
+  geom_point() +
+  stat_smooth(aes(colour="all"),
+              method="lm",na.rm=T,se=F
+              ) +
+  stat_smooth(aes(colour="excluded"),
+              method="lm",na.rm=T,se=F,
+              data=portfolio.adj) +
+  geom_abline(
+    intercept=mymodel2.adj$coefficients[1],
+    slope=mymodel2.adj$coefficients[2],
+    size=1,
+    colour="blue"
+    ) +
+  scale_colour_manual(name="Models",values=c("red","blue"))
+```
